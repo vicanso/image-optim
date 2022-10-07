@@ -22,3 +22,11 @@ impl From<lodepng::Error> for ImageError {
         }
     }
 }
+impl From<image::ImageError> for ImageError {
+    fn from(error: image::ImageError) -> Self {
+        ImageError {
+            message: error.to_string(),
+            category: "image".to_string(),
+        }
+    }
+}
