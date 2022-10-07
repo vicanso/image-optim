@@ -9,5 +9,6 @@ edition = "2021"
 image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder"] }
 imagequant = "4.0.4"
 lodepng = "3.7.0"
+mozjpeg = "0.9.4"
 rgb = "0.8.34"
 serde = { version = "1.0.145", features = ["derive"] }

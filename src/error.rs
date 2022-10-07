@@ -2,8 +2,8 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageError {
-    message: String,
-    category: String,
+    pub message: String,
+    pub category: String,
 }
 
 impl From<imagequant::Error> for ImageError {
