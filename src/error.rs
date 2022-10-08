@@ -30,3 +30,11 @@ impl From<image::ImageError> for ImageError {
         }
     }
 }
+impl From<std::string::String> for ImageError {
+    fn from(message: std::string::String) -> Self {
+        ImageError {
+            message,
+            category: "unknown".to_string(),
+        }
+    }
+}
