@@ -1,4 +1,53 @@
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HTTPError {
+    pub message: String,
+    pub category: String,
+    pub status: u16,
+}
+
+impl Default for HTTPError {
+    fn default() -> Self {
+        HTTPError {
+            message: "".to_string(),
+            category: "".to_string(),
+            status: 400,
+        }
+    }
+}
+impl IntoResponse for HTTPError {
+    fn into_response(self) -> Response {
+        let status = match StatusCode::from_u16(self.status) {
+            Ok(status) => status,
+            Err(_) => StatusCode::BAD_REQUEST,
+        };
+        (status, Json(self)).into_response()
+    }
+}
+impl From<ImageError> for HTTPError {
+    fn from(error: ImageError) -> Self {
+        HTTPError {
+            message: error.message,
+            category: error.category,
+            ..Default::default()
+        }
+    }
+}
+impl From<base64::DecodeError> for HTTPError {
+    fn from(error: base64::DecodeError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "base64".to_string(),
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageError {

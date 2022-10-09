@@ -1,14 +1,24 @@
-use std::{fs, path::Path};
+use axum::{routing::get, Router};
+use std::net::SocketAddr;
 
 mod error;
 mod image;
+mod optim;
+mod response;
 
-fn main() {
-    let png_i = lodepng::decode32_file("/Users/xieshuzhou/Downloads/icons/open.png").unwrap();
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/ping", get(ping))
+        .merge(optim::new_router());
 
-    let img_info: image::ImageInfo = png_i.into();
-    let buf = img_info.to_png(100).unwrap();
-    println!("{}", buf.len());
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
 
-    fs::write(Path::new("buf.png"), buf).unwrap();
+async fn ping() -> &'static str {
+    "pong"
 }

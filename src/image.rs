@@ -1,3 +1,9 @@
+use axum::{
+    body::Full,
+    http::{header, HeaderValue},
+    response::{IntoResponse, Response},
+};
+
 use super::error::ImageError;
 use image::{codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, ImageFormat, RgbaImage};
 use lodepng::Bitmap;
@@ -5,7 +11,6 @@ use rgb::{ComponentBytes, RGB8, RGBA8};
 use std::{
     ffi::OsStr,
     io::{BufRead, Read, Seek},
-    path::PathBuf,
 };
 
 pub struct ImageInfo {
@@ -49,11 +54,29 @@ impl From<RgbaImage> for ImageInfo {
     }
 }
 
-pub fn open(file: String) -> Result<ImageInfo, ImageError> {
-    let result = image::open(PathBuf::from(file))?;
-    let img = result.to_rgba8();
-    Ok(img.into())
+pub struct ImagePreview {
+    pub data: Vec<u8>,
+    pub image_type: String,
 }
+
+impl IntoResponse for ImagePreview {
+    fn into_response(self) -> Response {
+        let mut res = Full::from(self.data).into_response();
+
+        let result = mime_guess::from_ext(self.image_type.as_str()).first_or(mime::IMAGE_JPEG);
+        if let Ok(value) = HeaderValue::from_str(result.as_ref()) {
+            res.headers_mut().insert(header::CONTENT_TYPE, value);
+        }
+
+        res
+    }
+}
+
+// pub fn open(file: String) -> Result<ImageInfo, ImageError> {
+//     let result = image::open(PathBuf::from(file))?;
+//     let img = result.to_rgba8();
+//     Ok(img.into())
+// }
 
 pub fn load<R: BufRead + Seek>(r: R, ext: String) -> Result<ImageInfo, ImageError> {
     let format = ImageFormat::from_extension(OsStr::new(ext.as_str()))
