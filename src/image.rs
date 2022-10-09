@@ -111,15 +111,15 @@ impl ImageInfo {
 
         Ok(w)
     }
-    pub fn to_avif(&self, quality: u8) -> Result<Vec<u8>, ImageError> {
+    pub fn to_avif(&self, quality: u8, speed: u8) -> Result<Vec<u8>, ImageError> {
         let mut w = Vec::new();
 
-        let img = avif::AvifEncoder::new_with_speed_quality(&mut w, 10, quality);
+        let img = avif::AvifEncoder::new_with_speed_quality(&mut w, speed, quality);
         img.write_image(
-            self.buffer.as_bytes(),
+            self.get_rgb8().as_bytes(),
             self.width as u32,
             self.height as u32,
-            image::ColorType::Rgba8,
+            image::ColorType::Rgb8,
         )?;
 
         Ok(w)
