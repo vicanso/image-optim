@@ -48,6 +48,24 @@ impl From<base64::DecodeError> for HTTPError {
         }
     }
 }
+impl From<reqwest::Error> for HTTPError {
+    fn from(error: reqwest::Error) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "reqwest".to_string(),
+            ..Default::default()
+        }
+    }
+}
+impl From<reqwest::header::ToStrError> for HTTPError {
+    fn from(error: reqwest::header::ToStrError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "reqwest".to_string(),
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageError {
