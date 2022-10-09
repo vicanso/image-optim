@@ -3,7 +3,7 @@ FROM rust:alpine as builder
 COPY . /image-optim
 
 RUN apk update \
-  && apk add git make musl-dev openssl \
+  && apk add git make musl-dev openssl-dev \
   && cd /image-optim \
   && cargo build --release
 
