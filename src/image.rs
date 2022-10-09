@@ -1,10 +1,10 @@
 use super::error::ImageError;
-use image::{codecs::avif, codecs::webp, ImageFormat, RgbaImage};
+use image::{codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, ImageFormat, RgbaImage};
 use lodepng::Bitmap;
 use rgb::{ComponentBytes, RGB8, RGBA8};
 use std::{
     ffi::OsStr,
-    io::{BufRead, Seek},
+    io::{BufRead, Read, Seek},
     path::PathBuf,
 };
 
@@ -61,6 +61,21 @@ pub fn load<R: BufRead + Seek>(r: R, ext: String) -> Result<ImageInfo, ImageErro
     let result = image::load(r, format)?;
     let img = result.to_rgba8();
     Ok(img.into())
+}
+
+pub fn to_gif<R: Read>(r: R, speed: u8) -> Result<Vec<u8>, ImageError> {
+    let decoder = gif::GifDecoder::new(r)?;
+    let frames = decoder.into_frames();
+
+    let mut w = Vec::new();
+
+    {
+        let mut encoder = gif::GifEncoder::new_with_speed(&mut w, speed as i32);
+        encoder.set_repeat(gif::Repeat::Infinite)?;
+        encoder.try_encode_frames(frames.into_iter())?;
+    }
+
+    Ok(w)
 }
 
 impl ImageInfo {
