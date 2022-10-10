@@ -1,21 +1,25 @@
 use crate::error::HTTPError;
 use crate::image;
 use crate::response::ResponseResult;
-use axum::{routing::post, Json, Router};
+use axum::{
+    extract::Query,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
 pub fn new_router() -> Router {
     let r = Router::new();
 
-    r.route("/optim-images/preview", post(optim_image_preview))
+    r.route("/optim-images/preview", get(optim_image_preview))
         .route("/optim-images", post(optim_image))
 }
 
 async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
     // 如果data是http:// 则通过http方式读取数据
     let mut data_type = params.data_type;
-    let result = match params.data.starts_with("http") {
+    let original_data = match params.data.starts_with("http") {
         true => {
             let resp = reqwest::get(params.data).await?;
             if let Some(content_type) = resp.headers().get("Content-Type") {
@@ -29,13 +33,15 @@ async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
         }
         _ => base64::decode(params.data)?,
     };
-    let original_size = result.len();
-    let c = Cursor::new(result);
+    let original_size = original_data.len();
+    // 后续可能使用原来数据，因此clone
+    let c = Cursor::new(original_data.clone());
     let quality = params.quality;
     let speed = params.speed;
     let mut output_type = params.output_type.clone();
+    let same_type = data_type == output_type;
 
-    let data = match data_type.as_str() {
+    let mut data = match data_type.as_str() {
         // gif单独处理
         "gif" => {
             output_type = "gif".to_string();
@@ -47,7 +53,7 @@ async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
                 "png" => info.to_png(quality)?,
                 "avif" => info.to_avif(quality, speed)?,
                 "webp" => info.to_webp(quality)?,
-                //
+                // 其它的全部使用jpeg
                 _ => {
                     output_type = "jpeg".to_string();
                     info.to_mozjpeg(quality)?
@@ -55,6 +61,12 @@ async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
             }
         }
     };
+
+    // 如果图片类型未调整，而且压缩后的数据更大，
+    // 则直接使用原数据
+    if same_type && data.len() > original_size {
+        data = original_data
+    }
     Ok(OptimResult {
         saving: 100 * data.len() / original_size,
         data,
@@ -63,7 +75,7 @@ async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
 }
 
 async fn optim_image_preview(
-    Json(params): Json<OptimImageParams>,
+    Query(params): Query<OptimImageParams>,
 ) -> ResponseResult<image::ImagePreview> {
     let result = handle(params).await?;
 

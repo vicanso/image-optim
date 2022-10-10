@@ -17,6 +17,7 @@ impl Default for HTTPError {
         HTTPError {
             message: "".to_string(),
             category: "".to_string(),
+            // 默认使用400为状态码
             status: 400,
         }
     }

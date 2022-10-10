@@ -14,6 +14,7 @@ use std::{
 };
 
 pub struct ImageInfo {
+    // rgba像素
     pub buffer: Vec<RGBA8>,
     /// Width in pixels
     pub width: usize,
@@ -59,10 +60,12 @@ pub struct ImagePreview {
     pub image_type: String,
 }
 
+// 图片预览转换为response
 impl IntoResponse for ImagePreview {
     fn into_response(self) -> Response {
         let mut res = Full::from(self.data).into_response();
 
+        // 设置content type
         let result = mime_guess::from_ext(self.image_type.as_str()).first_or(mime::IMAGE_JPEG);
         if let Ok(value) = HeaderValue::from_str(result.as_ref()) {
             res.headers_mut().insert(header::CONTENT_TYPE, value);
@@ -102,6 +105,7 @@ pub fn to_gif<R: Read>(r: R, speed: u8) -> Result<Vec<u8>, ImageError> {
 }
 
 impl ImageInfo {
+    // 转换获取rgb颜色
     fn get_rgb8(&self) -> Vec<RGB8> {
         let mut output_data: Vec<RGB8> = Vec::with_capacity(self.width * self.height);
 

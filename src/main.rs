@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 
 mod error;
 mod image;
+mod image_processing;
 mod optim;
 mod response;
 
