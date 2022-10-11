@@ -67,6 +67,24 @@ impl From<reqwest::header::ToStrError> for HTTPError {
         }
     }
 }
+impl From<std::io::Error> for HTTPError {
+    fn from(error: std::io::Error) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "io".to_string(),
+            ..Default::default()
+        }
+    }
+}
+impl From<image::ImageError> for HTTPError {
+    fn from(error: image::ImageError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "image".to_string(),
+            ..Default::default()
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageError {

@@ -15,7 +15,7 @@ EXPOSE 3000
 
 RUN addgroup -g 1000 rust \
   && adduser -u 1000 -G rust -s /bin/sh -D rust \
-  && apk add --no-cache ca-certificates tzdata
+  && apk add --no-cache ca-certificates tzdata libc6-compat
 
 COPY --from=builder /image-optim/target/release/image-optim /usr/local/bin/image-optim
 COPY --from=builder /image-optim/entrypoint.sh /entrypoint.sh
