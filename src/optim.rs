@@ -1,5 +1,6 @@
 use crate::error::HTTPError;
 use crate::image;
+use crate::image_processing::{LoaderProcess, OptimProcess, Process, ProcessImage};
 use crate::response::ResponseResult;
 use axum::{
     extract::Query,
@@ -7,7 +8,6 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::io::Cursor;
 
 pub fn new_router() -> Router {
     let r = Router::new();
@@ -17,60 +17,22 @@ pub fn new_router() -> Router {
 }
 
 async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
-    // 如果data是http:// 则通过http方式读取数据
-    let mut data_type = params.data_type;
-    let original_data = match params.data.starts_with("http") {
-        true => {
-            let resp = reqwest::get(params.data).await?;
-            if let Some(content_type) = resp.headers().get("Content-Type") {
-                let str = content_type.to_str()?;
-                let arr: Vec<_> = str.split('/').collect();
-                if arr.len() == 2 {
-                    data_type = arr[1].to_string();
-                }
-            }
-            resp.bytes().await?.into()
-        }
-        _ => base64::decode(params.data)?,
-    };
+    let process_img = LoaderProcess::new(params.data.clone(), params.data_type.clone())
+        .process(ProcessImage::new())
+        .await?;
+
+    let original_data = process_img.buffer.clone();
     let original_size = original_data.len();
-    // 后续可能使用原来数据，因此clone
-    let c = Cursor::new(original_data.clone());
-    let quality = params.quality;
-    let speed = params.speed;
-    let mut output_type = params.output_type.clone();
-    let same_type = data_type == output_type;
+    let process_img = OptimProcess::new(params.output_type, params.quality, params.speed)
+        .process(process_img)
+        .await?;
 
-    let mut data = match data_type.as_str() {
-        // gif单独处理
-        "gif" => {
-            output_type = "gif".to_string();
-            image::to_gif(c, 10)?
-        }
-        _ => {
-            let info = image::load(c, data_type)?;
-            match params.output_type.as_str() {
-                "png" => info.to_png(quality)?,
-                "avif" => info.to_avif(quality, speed)?,
-                "webp" => info.to_webp(quality)?,
-                // 其它的全部使用jpeg
-                _ => {
-                    output_type = "jpeg".to_string();
-                    info.to_mozjpeg(quality)?
-                }
-            }
-        }
-    };
+    let data = process_img.buffer;
 
-    // 如果图片类型未调整，而且压缩后的数据更大，
-    // 则直接使用原数据
-    if same_type && data.len() > original_size {
-        data = original_data
-    }
     Ok(OptimResult {
         saving: 100 * data.len() / original_size,
         data,
-        output_type,
+        output_type: process_img.ext,
     })
 }
 

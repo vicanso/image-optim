@@ -12,6 +12,15 @@ pub struct HTTPError {
     pub status: u16,
 }
 
+impl HTTPError {
+    pub fn new(message: &str, category: &str) -> Self {
+        Self {
+            message: message.to_string(),
+            category: category.to_string(),
+            status: 400,
+        }
+    }
+}
 impl Default for HTTPError {
     fn default() -> Self {
         HTTPError {
@@ -81,6 +90,24 @@ impl From<image::ImageError> for HTTPError {
         HTTPError {
             message: error.to_string(),
             category: "image".to_string(),
+            ..Default::default()
+        }
+    }
+}
+impl From<std::string::FromUtf8Error> for HTTPError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "fromUtf8".to_string(),
+            ..Default::default()
+        }
+    }
+}
+impl From<std::num::ParseIntError> for HTTPError {
+    fn from(error: std::num::ParseIntError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "parseInt".to_string(),
             ..Default::default()
         }
     }

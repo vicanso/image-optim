@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = "0.1.57"
 axum = "0.6.0-rc.2"
 base64 = "0.20.0-alpha.1"
 image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder"] }
@@ -18,3 +19,4 @@ reqwest = "0.11.12"
 rgb = "0.8.34"
 serde = { version = "1.0.145", features = ["derive"] }
 tokio = { version = "1.21.2", features = ["macros", "rt", "rt-multi-thread", "net"] }
+urlencoding = "2.1.2"
