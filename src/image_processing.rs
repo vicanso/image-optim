@@ -1,16 +1,19 @@
 use crate::error::HTTPError;
+
 use crate::image::{to_gif, ImageInfo};
 use async_trait::async_trait;
 use image::{
     imageops::{crop, overlay, resize, FilterType},
     load, DynamicImage, ImageFormat,
 };
-use std::{ffi::OsStr, io::Cursor};
+use std::vec;
+use std::{ffi::OsStr, io::Cursor, str::FromStr};
 use urlencoding::decode;
 
 #[derive(Default)]
 pub struct ProcessImage {
     di: DynamicImage,
+    pub original_size: usize,
     pub buffer: Vec<u8>,
     pub ext: String,
 }
@@ -18,6 +21,7 @@ pub struct ProcessImage {
 impl ProcessImage {
     pub fn new() -> Self {
         Self {
+            original_size: 0,
             di: DynamicImage::new_rgba8(0, 0),
             buffer: Vec::new(),
             ext: "".to_string(),
@@ -27,46 +31,75 @@ impl ProcessImage {
 
 type ProcessResult = Result<ProcessImage, HTTPError>;
 
-pub async fn process_pipeline(list: Vec<Box<dyn Process>>, pi: ProcessImage) -> ProcessResult {
-    let mut img = pi;
-    for p in list {
-        img = p.process(img).await?;
-    }
-    Ok(img)
-}
+pub const PROCESS_LOAD: &str = "load";
+pub const PROCESS_RESIZE: &str = "resize";
+pub const PROCESS_OPTIM: &str = "optim";
+pub const PROCESS_CROP: &str = "crop";
+pub const PROCESS_WATERMARK: &str = "watermark";
 
-pub async fn run(desc: String) -> ProcessResult {
-    let arr = desc.split('|');
-    let sep = "/";
+pub async fn run(tasks: Vec<Vec<String>>) -> ProcessResult {
     let mut img = ProcessImage::new();
     let he = HTTPError::new("params is invalid", "validate");
-    for item in arr {
-        let params: Vec<_> = item.split(sep).collect();
-        if params.is_empty() {
+    for params in tasks {
+        if params.len() < 2 {
             continue;
         }
-        match params[0] {
-            "load" => {
-                // 参数不符合
-                if params.len() < 3 {
-                    return Err(he);
-                }
-                let ext = params[1].to_string();
-                let mut data = params[2..].join(sep);
-                // http的url需要decode
-                if data.starts_with("http") {
-                    data = decode(data.as_str())?.to_string();
+        let sub_params = &params[1..];
+        match params[0].as_str() {
+            PROCESS_LOAD => {
+                let data = sub_params[0].to_string();
+                let mut ext = "".to_string();
+                if sub_params.len() >= 2 {
+                    ext = sub_params[1].to_string();
                 }
                 img = LoaderProcess::new(data, ext).process(img).await?;
             }
-            "resize" => {
+            PROCESS_RESIZE => {
                 // 参数不符合
-                if params.len() < 3 {
+                if sub_params.len() < 2 {
                     return Err(he);
                 }
-                let width = params[1].parse::<u32>()?;
-                let height = params[2].parse::<u32>()?;
+                let width = sub_params[0].parse::<u32>()?;
+                let height = sub_params[1].parse::<u32>()?;
                 img = ResizeProcess::new(width, height).process(img).await?;
+            }
+            PROCESS_OPTIM => {
+                // 参数不符合
+                if sub_params.len() < 3 {
+                    return Err(he);
+                }
+                let output_type = sub_params[0].to_string();
+                let quality = sub_params[1].parse::<u8>()?;
+                let speed = sub_params[2].parse::<u8>()?;
+                img = OptimProcess::new(output_type, quality, speed)
+                    .process(img)
+                    .await?;
+            }
+            PROCESS_CROP => {
+                // 参数不符合
+                if sub_params.len() < 4 {
+                    return Err(he);
+                }
+                let x = sub_params[0].parse::<u32>()?;
+                let y = sub_params[1].parse::<u32>()?;
+                let width = sub_params[2].parse::<u32>()?;
+                let height = sub_params[3].parse::<u32>()?;
+                img = CropProcess::new(x, y, width, height).process(img).await?;
+            }
+            PROCESS_WATERMARK => {
+                // 参数不符合
+                if sub_params.len() < 4 {
+                    return Err(he);
+                }
+                let url = decode(sub_params[0].as_str())?.to_string();
+                let position = WatermarkPosition::from_str(sub_params[1].as_str())?;
+                let margin_left = sub_params[2].parse::<i64>()?;
+                let margin_top = sub_params[3].parse::<i64>()?;
+                let watermark = LoaderProcess::new(url, "".to_string())
+                    .process(ProcessImage::new())
+                    .await?;
+                let pro = WatermarkProcess::new(watermark.di, position, margin_left, margin_top);
+                img = pro.process(img).await?;
             }
             _ => {}
         }
@@ -84,16 +117,11 @@ pub trait Process {
 pub struct LoaderProcess {
     data: String,
     ext: String,
-    pi: ProcessImage,
 }
 
 impl LoaderProcess {
     pub fn new(data: String, ext: String) -> Self {
-        LoaderProcess {
-            data,
-            ext,
-            pi: ProcessImage::new(),
-        }
+        LoaderProcess { data, ext }
     }
     async fn fetch_data(&self) -> ProcessResult {
         let data = self.data.clone();
@@ -124,9 +152,10 @@ impl LoaderProcess {
 
         let di = load(c, format)?;
         Ok(ProcessImage {
-            di: di,
+            original_size: original_data.len(),
+            di,
             buffer: original_data,
-            ext: ext,
+            ext,
         })
     }
 }
@@ -162,14 +191,17 @@ impl Process for ResizeProcess {
         if w == 0 && h == 0 {
             return Ok(img);
         }
+        let width = img.di.width();
+        let height = img.di.height();
         // 如果宽或者高为0，则计算对应的宽高
         if w == 0 {
-            w = self.width * h / self.height
+            w = width * h / height;
         }
         if h == 0 {
-            h = self.height * w / self.width;
+            h = height * w / width;
         }
         let result = resize(&img.di, w, h, FilterType::Lanczos3);
+        img.buffer = vec![];
         img.di = DynamicImage::ImageRgba8(result);
         Ok(img)
     }
@@ -187,6 +219,24 @@ pub enum WatermarkPosition {
     RightBottom,
 }
 
+impl FromStr for WatermarkPosition {
+    type Err = HTTPError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "leftTop" => Ok(WatermarkPosition::LeftTop),
+            "top" => Ok(WatermarkPosition::Top),
+            "rightTop" => Ok(WatermarkPosition::RightTop),
+            "left" => Ok(WatermarkPosition::Left),
+            "center" => Ok(WatermarkPosition::Center),
+            "right" => Ok(WatermarkPosition::Right),
+            "leftBottom" => Ok(WatermarkPosition::LeftBottom),
+            "bottom" => Ok(WatermarkPosition::Bottom),
+            "rightBottom" => Ok(WatermarkPosition::RightBottom),
+            _ => Err(HTTPError::new("invalid position", "watermark")),
+        }
+    }
+}
+
 // 水印处理
 pub struct WatermarkProcess {
     watermark: DynamicImage,
@@ -196,12 +246,17 @@ pub struct WatermarkProcess {
 }
 
 impl WatermarkProcess {
-    pub fn new(watermark: DynamicImage, position: WatermarkPosition) -> Self {
+    pub fn new(
+        watermark: DynamicImage,
+        position: WatermarkPosition,
+        margin_left: i64,
+        margin_top: i64,
+    ) -> Self {
         WatermarkProcess {
             watermark,
             position,
-            margin_left: 0,
-            margin_top: 0,
+            margin_left,
+            margin_top,
         }
     }
 }
@@ -337,7 +392,8 @@ impl Process for OptimProcess {
         };
         // 类型不一样
         // 或者类型一样但是数据最小
-        if img.ext != original_type || data.len() < original_size {
+        // 或者无原始数据
+        if img.ext != original_type || data.len() < original_size || original_size == 0 {
             img.buffer = data;
         }
 

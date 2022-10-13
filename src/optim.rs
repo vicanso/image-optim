@@ -1,36 +1,42 @@
+use std::vec;
+
 use crate::error::HTTPError;
 use crate::image;
-use crate::image_processing::{LoaderProcess, OptimProcess, Process, ProcessImage};
+use crate::image_processing::{run, PROCESS_LOAD, PROCESS_OPTIM};
 use crate::response::ResponseResult;
 use axum::{
-    extract::Query,
+    extract::{Query, RawQuery},
     routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use urlencoding::decode;
 
 pub fn new_router() -> Router {
     let r = Router::new();
 
     r.route("/optim-images/preview", get(optim_image_preview))
         .route("/optim-images", post(optim_image))
+        .route("/pipeline-images", get(pipeline_image))
+        .route("/pipeline-images/preview", get(pipeline_image_preview))
 }
 
 async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
-    let process_img = LoaderProcess::new(params.data.clone(), params.data_type.clone())
-        .process(ProcessImage::new())
-        .await?;
+    let desc = params.description();
+    pipeline(desc).await
+}
 
-    let original_data = process_img.buffer.clone();
-    let original_size = original_data.len();
-    let process_img = OptimProcess::new(params.output_type, params.quality, params.speed)
-        .process(process_img)
-        .await?;
+async fn pipeline(desc: Vec<Vec<String>>) -> Result<OptimResult, HTTPError> {
+    let process_img = run(desc).await?;
 
     let data = process_img.buffer;
+    let mut ratio = 0;
+    if process_img.original_size > 0 {
+        ratio = 100 * data.len() / process_img.original_size;
+    }
 
     Ok(OptimResult {
-        saving: 100 * data.len() / original_size,
+        ratio,
         data,
         output_type: process_img.ext,
     })
@@ -52,10 +58,52 @@ async fn optim_image(
 ) -> ResponseResult<Json<OptimImageResult>> {
     let result = handle(params).await?;
     Ok(Json(OptimImageResult {
-        saving: result.saving,
+        ratio: result.ratio,
         data: base64::encode(result.data),
         output_type: result.output_type,
     }))
+}
+
+fn convert_query_to_desc(query: Option<String>) -> Result<Vec<Vec<String>>, HTTPError> {
+    let desc = query.ok_or_else(|| HTTPError::new("params is null", "validate"))?;
+    let sep = "&";
+    let arr = desc.split(sep);
+    let mut result = Vec::new();
+    for str in arr {
+        let items: Vec<_> = str.split('=').collect();
+        if items.len() != 2 {
+            continue;
+        }
+        let value = decode(items[1])?.to_string();
+        let mut params = vec![items[0].to_string()];
+        for p in value.split('|') {
+            params.push(p.to_string());
+        }
+        // params.extend(items[1].split("|"));
+        // params.push(items[1].split("|")..);
+        result.push(params);
+    }
+    Ok(result)
+}
+
+async fn pipeline_image(RawQuery(query): RawQuery) -> ResponseResult<Json<OptimImageResult>> {
+    let desc = convert_query_to_desc(query)?;
+
+    let result = pipeline(desc).await?;
+    Ok(Json(OptimImageResult {
+        ratio: result.ratio,
+        data: base64::encode(result.data),
+        output_type: result.output_type,
+    }))
+}
+async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<image::ImagePreview> {
+    let desc = convert_query_to_desc(query)?;
+
+    let result = pipeline(desc).await?;
+    Ok(image::ImagePreview {
+        data: result.data,
+        image_type: result.output_type,
+    })
 }
 
 #[derive(Deserialize)]
@@ -67,17 +115,33 @@ struct OptimImageParams {
     quality: u8,
     speed: u8,
 }
+impl OptimImageParams {
+    // to processing description string
+    pub fn description(self) -> Vec<Vec<String>> {
+        let load_process = vec![PROCESS_LOAD.to_string(), self.data, self.data_type];
+        let optim_process = vec![
+            PROCESS_OPTIM.to_string(),
+            self.output_type,
+            self.quality.to_string(),
+            self.speed.to_string(),
+        ];
+
+        let arr = vec![load_process, optim_process];
+
+        arr
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OptimImageResult {
     data: String,
     output_type: String,
-    saving: usize,
+    ratio: usize,
 }
 
 struct OptimResult {
     data: Vec<u8>,
     output_type: String,
-    saving: usize,
+    ratio: usize,
 }
