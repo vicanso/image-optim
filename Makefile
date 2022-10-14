@@ -1,7 +1,7 @@
 .PHONY: default
 
 lint:
-	cargo clippy 
+	cargo clippy --fix --allow-staged
 fmt:
 	cargo fmt --all --
 dev:

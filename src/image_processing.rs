@@ -14,7 +14,7 @@ use urlencoding::decode;
 pub struct ProcessImage {
     di: DynamicImage,
     pub original_size: usize,
-    pub buffer: Vec<u8>,
+    buffer: Vec<u8>,
     pub ext: String,
 }
 
@@ -25,6 +25,17 @@ impl ProcessImage {
             di: DynamicImage::new_rgba8(0, 0),
             buffer: Vec::new(),
             ext: "".to_string(),
+        }
+    }
+    pub fn get_buffer(&self) -> Result<Vec<u8>, HTTPError> {
+        if self.buffer.is_empty() {
+            let mut bytes: Vec<u8> = Vec::new();
+            let format =
+                ImageFormat::from_extension(self.ext.as_str()).unwrap_or(ImageFormat::Jpeg);
+            self.di.write_to(&mut Cursor::new(&mut bytes), format)?;
+            Ok(bytes)
+        } else {
+            Ok(self.buffer.clone())
         }
     }
 }
@@ -266,40 +277,40 @@ impl Process for WatermarkProcess {
     async fn process(&self, pi: ProcessImage) -> ProcessResult {
         let mut img = pi;
         let di = img.di;
-        let w = di.width();
-        let h = di.height();
-        let ww = self.watermark.width();
-        let wh = self.watermark.height();
+        let w = di.width() as i64;
+        let h = di.height() as i64;
+        let ww = self.watermark.width() as i64;
+        let wh = self.watermark.height() as i64;
         let mut x: i64 = 0;
         let mut y: i64 = 0;
         match self.position {
             WatermarkPosition::Top => {
-                x = ((w - ww) >> 1) as i64;
+                x = (w - ww) >> 1;
             }
             WatermarkPosition::RightTop => {
-                x = (w - ww) as i64;
+                x = w - ww;
             }
             WatermarkPosition::Left => {
-                y = ((h - wh) >> 1) as i64;
+                y = (h - wh) >> 1;
             }
             WatermarkPosition::Center => {
-                x = ((w - ww) >> 1) as i64;
-                y = ((h - wh) >> 1) as i64;
+                x = (w - ww) >> 1;
+                y = (h - wh) >> 1;
             }
             WatermarkPosition::Right => {
-                x = (w - ww) as i64;
-                y = ((h - wh) >> 1) as i64;
+                x = w - ww;
+                y = (h - wh) >> 1;
             }
             WatermarkPosition::LeftBottom => {
-                y = (h - wh) as i64;
+                y = h - wh;
             }
             WatermarkPosition::Bottom => {
-                x = ((w - ww) >> 1) as i64;
-                y = (h - wh) as i64;
+                x = (w - ww) >> 1;
+                y = h - wh;
             }
             WatermarkPosition::RightBottom => {
-                x = (w - ww) as i64;
-                y = (h - wh) as i64;
+                x = w - ww;
+                y = h - wh;
             }
             _ => (),
         }
@@ -307,6 +318,7 @@ impl Process for WatermarkProcess {
         y += self.margin_top;
         let mut bottom: DynamicImage = di;
         overlay(&mut bottom, &self.watermark, x, y);
+        img.buffer = vec![];
         img.di = bottom;
         Ok(img)
     }
@@ -338,6 +350,7 @@ impl Process for CropProcess {
         let mut r = img.di;
         let result = crop(&mut r, self.x, self.y, self.width, self.height);
         img.di = DynamicImage::ImageRgba8(result.to_image());
+        img.buffer = vec![];
         Ok(img)
     }
 }
@@ -370,15 +383,21 @@ impl Process for OptimProcess {
         let original_type = img.ext.clone();
 
         let original_size = img.buffer.len();
-        img.ext = self.output_type.clone();
+        let mut output_type = self.output_type.clone();
+        // 如果未指定输出，则保持原有
+        if output_type.is_empty() {
+            output_type = original_type.clone();
+        }
 
-        let data = match self.output_type.as_str() {
+        img.ext = output_type.clone();
+
+        let data = match output_type.as_str() {
             "gif" => {
                 let c = Cursor::new(img.buffer.clone());
                 to_gif(c, 10)?
             }
             _ => {
-                match self.output_type.as_str() {
+                match output_type.as_str() {
                     "png" => info.to_png(quality)?,
                     "avif" => info.to_avif(quality, speed)?,
                     "webp" => info.to_webp(quality)?,

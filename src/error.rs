@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde::Serialize;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPError {

@@ -15,7 +15,7 @@ use urlencoding::decode;
 pub fn new_router() -> Router {
     let r = Router::new();
 
-    r.route("/optim-images/preview", get(optim_image_preview))
+    r.route("/optim-images", get(optim_image_preview))
         .route("/optim-images", post(optim_image))
         .route("/pipeline-images", get(pipeline_image))
         .route("/pipeline-images/preview", get(pipeline_image_preview))
@@ -29,7 +29,7 @@ async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
 async fn pipeline(desc: Vec<Vec<String>>) -> Result<OptimResult, HTTPError> {
     let process_img = run(desc).await?;
 
-    let data = process_img.buffer;
+    let data = process_img.get_buffer()?;
     let mut ratio = 0;
     if process_img.original_size > 0 {
         ratio = 100 * data.len() / process_img.original_size;
@@ -110,20 +110,28 @@ async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<ima
 #[serde(rename_all = "camelCase")]
 struct OptimImageParams {
     data: String,
-    data_type: String,
-    output_type: String,
-    quality: u8,
-    speed: u8,
+    data_type: Option<String>,
+    output_type: Option<String>,
+    quality: Option<u8>,
+    speed: Option<u8>,
 }
 impl OptimImageParams {
     // to processing description string
     pub fn description(self) -> Vec<Vec<String>> {
-        let load_process = vec![PROCESS_LOAD.to_string(), self.data, self.data_type];
+        let load_process = vec![
+            PROCESS_LOAD.to_string(),
+            self.data,
+            self.data_type.unwrap_or("".to_string()),
+        ];
+
+        let quality = self.quality.unwrap_or(80);
+        let speed = self.speed.unwrap_or(3);
+
         let optim_process = vec![
             PROCESS_OPTIM.to_string(),
-            self.output_type,
-            self.quality.to_string(),
-            self.speed.to_string(),
+            self.output_type.unwrap_or("".to_string()),
+            quality.to_string(),
+            speed.to_string(),
         ];
 
         let arr = vec![load_process, optim_process];
