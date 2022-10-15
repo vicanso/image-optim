@@ -1,4 +1,4 @@
-use crate::image::HandleError;
+use crate::image_processing::ImageProcessingError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -42,50 +42,22 @@ impl IntoResponse for HTTPError {
     }
 }
 
-impl From<HandleError> for HTTPError {
-    fn from(err: HandleError) -> Self {
-        HTTPError {
-            message: err.to_string(),
-            category: "image".to_string(),
-            status: 500,
-            ..Default::default()
-        }
-    }
-}
-impl From<base64::DecodeError> for HTTPError {
-    fn from(error: base64::DecodeError) -> Self {
-        HTTPError {
-            message: error.to_string(),
-            category: "base64".to_string(),
-            ..Default::default()
-        }
-    }
-}
-impl From<reqwest::Error> for HTTPError {
-    fn from(error: reqwest::Error) -> Self {
-        HTTPError {
-            message: error.to_string(),
-            category: "reqwest".to_string(),
-            ..Default::default()
-        }
-    }
-}
-impl From<reqwest::header::ToStrError> for HTTPError {
-    fn from(error: reqwest::header::ToStrError) -> Self {
-        HTTPError {
-            message: error.to_string(),
-            category: "reqwest".to_string(),
-            ..Default::default()
-        }
-    }
-}
-
-impl From<image::ImageError> for HTTPError {
-    fn from(error: image::ImageError) -> Self {
-        HTTPError {
-            message: error.to_string(),
-            category: "image".to_string(),
-            ..Default::default()
+impl From<ImageProcessingError> for HTTPError {
+    fn from(err: ImageProcessingError) -> Self {
+        match err {
+            ImageProcessingError::Images { source } => {
+                let detail = source.to_detail();
+                HTTPError {
+                    status: 500,
+                    category: detail.category,
+                    message: detail.message,
+                }
+            }
+            _ => HTTPError {
+                status: 400,
+                category: "".to_string(),
+                message: err.to_string(),
+            },
         }
     }
 }
@@ -94,15 +66,6 @@ impl From<std::string::FromUtf8Error> for HTTPError {
         HTTPError {
             message: error.to_string(),
             category: "fromUtf8".to_string(),
-            ..Default::default()
-        }
-    }
-}
-impl From<std::num::ParseIntError> for HTTPError {
-    fn from(error: std::num::ParseIntError) -> Self {
-        HTTPError {
-            message: error.to_string(),
-            category: "parseInt".to_string(),
             ..Default::default()
         }
     }

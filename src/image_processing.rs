@@ -1,14 +1,33 @@
-use crate::error::HTTPError;
-
-use crate::image::{to_gif, ImageInfo};
+use crate::images::{to_gif, ImageError, ImageInfo};
 use async_trait::async_trait;
 use image::{
     imageops::{crop, overlay, resize, FilterType},
     load, DynamicImage, ImageFormat,
 };
-use std::vec;
-use std::{ffi::OsStr, io::Cursor, str::FromStr};
+use snafu::{ensure, ResultExt, Snafu};
+use std::{ffi::OsStr, io::Cursor, vec};
 use urlencoding::decode;
+
+#[derive(Debug, Snafu)]
+pub enum ImageProcessingError {
+    #[snafu(display("Process image fail, message:{message}"))]
+    ParamsInvalid { message: String },
+    #[snafu(display("{source}"))]
+    Reqwest { source: reqwest::Error },
+    #[snafu(display("{source}"))]
+    HTTPHeaderToStr { source: http::header::ToStrError },
+    #[snafu(display("{source}"))]
+    Base64Decode { source: base64::DecodeError },
+    #[snafu(display("{source}"))]
+    Image { source: image::ImageError },
+    #[snafu(display("{source}"))]
+    Images { source: ImageError },
+    #[snafu(display("{source}"))]
+    ParseInt { source: std::num::ParseIntError },
+    #[snafu(display("{source}"))]
+    FromUtf { source: std::string::FromUtf8Error },
+}
+type Result<T, E = ImageProcessingError> = std::result::Result<T, E>;
 
 #[derive(Default)]
 pub struct ProcessImage {
@@ -27,12 +46,14 @@ impl ProcessImage {
             ext: "".to_string(),
         }
     }
-    pub fn get_buffer(&self) -> Result<Vec<u8>, HTTPError> {
+    pub fn get_buffer(&self) -> Result<Vec<u8>> {
         if self.buffer.is_empty() {
             let mut bytes: Vec<u8> = Vec::new();
             let format =
                 ImageFormat::from_extension(self.ext.as_str()).unwrap_or(ImageFormat::Jpeg);
-            self.di.write_to(&mut Cursor::new(&mut bytes), format)?;
+            self.di
+                .write_to(&mut Cursor::new(&mut bytes), format)
+                .context(ImageSnafu {})?;
             Ok(bytes)
         } else {
             Ok(self.buffer.clone())
@@ -40,17 +61,17 @@ impl ProcessImage {
     }
 }
 
-type ProcessResult = Result<ProcessImage, HTTPError>;
-
 pub const PROCESS_LOAD: &str = "load";
 pub const PROCESS_RESIZE: &str = "resize";
 pub const PROCESS_OPTIM: &str = "optim";
 pub const PROCESS_CROP: &str = "crop";
 pub const PROCESS_WATERMARK: &str = "watermark";
 
-pub async fn run(tasks: Vec<Vec<String>>) -> ProcessResult {
+pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
     let mut img = ProcessImage::new();
-    let he = HTTPError::new("params is invalid", "validate");
+    let he = ParamsInvalidSnafu {
+        message: "params is invalid",
+    };
     for params in tasks {
         if params.len() < 2 {
             continue;
@@ -67,45 +88,45 @@ pub async fn run(tasks: Vec<Vec<String>>) -> ProcessResult {
             }
             PROCESS_RESIZE => {
                 // 参数不符合
-                if sub_params.len() < 2 {
-                    return Err(he);
-                }
-                let width = sub_params[0].parse::<u32>()?;
-                let height = sub_params[1].parse::<u32>()?;
+                ensure!(sub_params.len() >= 2, he);
+                let width = sub_params[0].parse::<u32>().context(ParseIntSnafu {})?;
+                let height = sub_params[1].parse::<u32>().context(ParseIntSnafu {})?;
                 img = ResizeProcess::new(width, height).process(img).await?;
             }
             PROCESS_OPTIM => {
                 // 参数不符合
-                if sub_params.len() < 3 {
-                    return Err(he);
-                }
+                ensure!(sub_params.len() >= 3, he);
                 let output_type = sub_params[0].to_string();
-                let quality = sub_params[1].parse::<u8>()?;
-                let speed = sub_params[2].parse::<u8>()?;
+                let quality = sub_params[1].parse::<u8>().context(ParseIntSnafu {})?;
+                let speed = sub_params[2].parse::<u8>().context(ParseIntSnafu {})?;
                 img = OptimProcess::new(output_type, quality, speed)
                     .process(img)
                     .await?;
             }
             PROCESS_CROP => {
                 // 参数不符合
-                if sub_params.len() < 4 {
-                    return Err(he);
-                }
-                let x = sub_params[0].parse::<u32>()?;
-                let y = sub_params[1].parse::<u32>()?;
-                let width = sub_params[2].parse::<u32>()?;
-                let height = sub_params[3].parse::<u32>()?;
+                ensure!(sub_params.len() >= 4, he);
+                let x = sub_params[0].parse::<u32>().context(ParseIntSnafu {})?;
+                let y = sub_params[1].parse::<u32>().context(ParseIntSnafu {})?;
+                let width = sub_params[2].parse::<u32>().context(ParseIntSnafu {})?;
+                let height = sub_params[3].parse::<u32>().context(ParseIntSnafu {})?;
                 img = CropProcess::new(x, y, width, height).process(img).await?;
             }
             PROCESS_WATERMARK => {
                 // 参数不符合
-                if sub_params.len() < 4 {
-                    return Err(he);
+                ensure!(sub_params.len() >= 2, he);
+                let url = decode(sub_params[0].as_str())
+                    .context(FromUtfSnafu {})?
+                    .to_string();
+                let position = WatermarkPosition::from_str(sub_params[1].as_str());
+                let mut margin_left = 0;
+                if sub_params.len() > 2 {
+                    margin_left = sub_params[2].parse::<i64>().context(ParseIntSnafu {})?;
                 }
-                let url = decode(sub_params[0].as_str())?.to_string();
-                let position = WatermarkPosition::from_str(sub_params[1].as_str())?;
-                let margin_left = sub_params[2].parse::<i64>()?;
-                let margin_top = sub_params[3].parse::<i64>()?;
+                let mut margin_top = 0;
+                if sub_params.len() > 3 {
+                    margin_top = sub_params[3].parse::<i64>().context(ParseIntSnafu {})?;
+                }
                 let watermark = LoaderProcess::new(url, "".to_string())
                     .process(ProcessImage::new())
                     .await?;
@@ -121,7 +142,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> ProcessResult {
 #[async_trait]
 
 pub trait Process {
-    async fn process(&self, pi: ProcessImage) -> ProcessResult;
+    async fn process(&self, pi: ProcessImage) -> Result<ProcessImage>;
 }
 
 // 数据加载处理
@@ -134,34 +155,34 @@ impl LoaderProcess {
     pub fn new(data: String, ext: String) -> Self {
         LoaderProcess { data, ext }
     }
-    async fn fetch_data(&self) -> ProcessResult {
+    async fn fetch_data(&self) -> Result<ProcessImage> {
         let data = self.data.clone();
         let mut ext = self.ext.clone();
         let original_data = match data.starts_with("http") {
             true => {
-                let resp = reqwest::get(data).await?;
+                let resp = reqwest::get(data).await.context(ReqwestSnafu {})?;
                 if let Some(content_type) = resp.headers().get("Content-Type") {
-                    let str = content_type.to_str()?;
+                    let str = content_type.to_str().context(HTTPHeaderToStrSnafu {})?;
                     let arr: Vec<_> = str.split('/').collect();
                     if arr.len() == 2 {
                         ext = arr[1].to_string();
                     }
                 }
-                resp.bytes().await?.into()
+                resp.bytes().await.context(ReqwestSnafu {})?.into()
             }
-            _ => base64::decode(data)?,
+            _ => base64::decode(data).context(Base64DecodeSnafu {})?,
         };
         let c = Cursor::new(original_data.clone());
-        let format =
-            ImageFormat::from_extension(OsStr::new(ext.clone().as_str())).ok_or_else(|| {
-                HTTPError {
-                    message: "not support format".to_string(),
-                    category: "imageFormat".to_string(),
-                    ..Default::default()
-                }
-            })?;
+        let format = ImageFormat::from_extension(OsStr::new(ext.clone().as_str()));
 
-        let di = load(c, format)?;
+        ensure!(
+            format.is_some(),
+            ParamsInvalidSnafu {
+                message: "format is not support".to_string(),
+            }
+        );
+
+        let di = load(c, format.unwrap()).context(ImageSnafu {})?;
         Ok(ProcessImage {
             original_size: original_data.len(),
             di,
@@ -175,7 +196,7 @@ impl LoaderProcess {
 #[async_trait]
 
 impl Process for LoaderProcess {
-    async fn process(&self, _: ProcessImage) -> ProcessResult {
+    async fn process(&self, _: ProcessImage) -> Result<ProcessImage> {
         let result = self.fetch_data().await?;
         Ok(result)
     }
@@ -195,7 +216,7 @@ impl ResizeProcess {
 
 #[async_trait]
 impl Process for ResizeProcess {
-    async fn process(&self, pi: ProcessImage) -> ProcessResult {
+    async fn process(&self, pi: ProcessImage) -> Result<ProcessImage> {
         let mut img = pi;
         let mut w = self.width;
         let mut h = self.height;
@@ -230,20 +251,18 @@ pub enum WatermarkPosition {
     RightBottom,
 }
 
-impl FromStr for WatermarkPosition {
-    type Err = HTTPError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl WatermarkPosition {
+    fn from_str(s: &str) -> Self {
         match s {
-            "leftTop" => Ok(WatermarkPosition::LeftTop),
-            "top" => Ok(WatermarkPosition::Top),
-            "rightTop" => Ok(WatermarkPosition::RightTop),
-            "left" => Ok(WatermarkPosition::Left),
-            "center" => Ok(WatermarkPosition::Center),
-            "right" => Ok(WatermarkPosition::Right),
-            "leftBottom" => Ok(WatermarkPosition::LeftBottom),
-            "bottom" => Ok(WatermarkPosition::Bottom),
-            "rightBottom" => Ok(WatermarkPosition::RightBottom),
-            _ => Err(HTTPError::new("invalid position", "watermark")),
+            "leftTop" => WatermarkPosition::LeftTop,
+            "top" => WatermarkPosition::Top,
+            "rightTop" => WatermarkPosition::RightTop,
+            "left" => WatermarkPosition::Left,
+            "right" => WatermarkPosition::Right,
+            "leftBottom" => WatermarkPosition::LeftBottom,
+            "bottom" => WatermarkPosition::Bottom,
+            "rightBottom" => WatermarkPosition::RightBottom,
+            _ => WatermarkPosition::Center,
         }
     }
 }
@@ -274,7 +293,7 @@ impl WatermarkProcess {
 
 #[async_trait]
 impl Process for WatermarkProcess {
-    async fn process(&self, pi: ProcessImage) -> ProcessResult {
+    async fn process(&self, pi: ProcessImage) -> Result<ProcessImage> {
         let mut img = pi;
         let di = img.di;
         let w = di.width() as i64;
@@ -345,7 +364,7 @@ impl CropProcess {
 
 #[async_trait]
 impl Process for CropProcess {
-    async fn process(&self, pi: ProcessImage) -> ProcessResult {
+    async fn process(&self, pi: ProcessImage) -> Result<ProcessImage> {
         let mut img = pi;
         let mut r = img.di;
         let result = crop(&mut r, self.x, self.y, self.width, self.height);
@@ -374,7 +393,7 @@ impl OptimProcess {
 
 #[async_trait]
 impl Process for OptimProcess {
-    async fn process(&self, pi: ProcessImage) -> ProcessResult {
+    async fn process(&self, pi: ProcessImage) -> Result<ProcessImage> {
         let mut img = pi;
 
         let info: ImageInfo = img.di.to_rgba8().into();
@@ -394,17 +413,17 @@ impl Process for OptimProcess {
         let data = match output_type.as_str() {
             "gif" => {
                 let c = Cursor::new(img.buffer.clone());
-                to_gif(c, 10)?
+                to_gif(c, 10).context(ImagesSnafu {})?
             }
             _ => {
                 match output_type.as_str() {
-                    "png" => info.to_png(quality)?,
-                    "avif" => info.to_avif(quality, speed)?,
-                    "webp" => info.to_webp(quality)?,
+                    "png" => info.to_png(quality).context(ImagesSnafu {})?,
+                    "avif" => info.to_avif(quality, speed).context(ImagesSnafu {})?,
+                    "webp" => info.to_webp(quality).context(ImagesSnafu {})?,
                     // 其它的全部使用jpeg
                     _ => {
                         img.ext = "jpeg".to_string();
-                        info.to_mozjpeg(quality)?
+                        info.to_mozjpeg(quality).context(ImagesSnafu {})?
                     }
                 }
             }

@@ -5,8 +5,8 @@ use std::time::Duration;
 use tower::ServiceBuilder;
 
 mod error;
-mod image;
 mod image_processing;
+mod images;
 mod optim;
 mod response;
 

@@ -14,7 +14,7 @@ use std::{
 };
 
 #[derive(Debug, Snafu)]
-pub enum HandleError {
+pub enum ImageError {
     #[snafu(display("Handle image fail, category:{category}, message:{source}"))]
     Image {
         category: String,
@@ -34,7 +34,35 @@ pub enum HandleError {
     Mozjpeg {},
 }
 
-type Result<T, E = HandleError> = std::result::Result<T, E>;
+pub struct ImageErrorDetail {
+    pub message: String,
+    pub category: String,
+}
+
+impl ImageError {
+    pub fn to_detail(&self) -> ImageErrorDetail {
+        match self {
+            ImageError::Image { category, source } => ImageErrorDetail {
+                category: category.to_string(),
+                message: source.to_string(),
+            },
+            ImageError::ImageQuant { category, source } => ImageErrorDetail {
+                category: category.to_string(),
+                message: source.to_string(),
+            },
+            ImageError::LodePNG { category, source } => ImageErrorDetail {
+                category: category.to_string(),
+                message: source.to_string(),
+            },
+            ImageError::Mozjpeg {} => ImageErrorDetail {
+                category: "mozjpeg".to_string(),
+                message: "unknown error".to_string(),
+            },
+        }
+    }
+}
+
+type Result<T, E = ImageError> = std::result::Result<T, E>;
 
 pub struct ImageInfo {
     // rgba像素

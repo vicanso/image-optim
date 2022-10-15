@@ -10,6 +10,7 @@ features = ["panic_hooks"]
 async-trait = "0.1.57"
 axum = "0.6.0-rc.2"
 base64 = "0.20.0-alpha.1"
+http = "0.2.8"
 image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder"] }
 imagequant = "4.0.4"
 lodepng = "3.7.0"

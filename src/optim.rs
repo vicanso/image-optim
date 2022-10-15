@@ -1,8 +1,8 @@
 use std::vec;
 
 use crate::error::HTTPError;
-use crate::image;
 use crate::image_processing::{run, PROCESS_LOAD, PROCESS_OPTIM};
+use crate::images;
 use crate::response::ResponseResult;
 use axum::{
     extract::{Query, RawQuery},
@@ -44,10 +44,10 @@ async fn pipeline(desc: Vec<Vec<String>>) -> Result<OptimResult, HTTPError> {
 
 async fn optim_image_preview(
     Query(params): Query<OptimImageParams>,
-) -> ResponseResult<image::ImagePreview> {
+) -> ResponseResult<images::ImagePreview> {
     let result = handle(params).await?;
 
-    Ok(image::ImagePreview {
+    Ok(images::ImagePreview {
         data: result.data,
         image_type: result.output_type,
     })
@@ -79,8 +79,6 @@ fn convert_query_to_desc(query: Option<String>) -> Result<Vec<Vec<String>>, HTTP
         for p in value.split('|') {
             params.push(p.to_string());
         }
-        // params.extend(items[1].split("|"));
-        // params.push(items[1].split("|")..);
         result.push(params);
     }
     Ok(result)
@@ -96,11 +94,11 @@ async fn pipeline_image(RawQuery(query): RawQuery) -> ResponseResult<Json<OptimI
         output_type: result.output_type,
     }))
 }
-async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<image::ImagePreview> {
+async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<images::ImagePreview> {
     let desc = convert_query_to_desc(query)?;
 
     let result = pipeline(desc).await?;
-    Ok(image::ImagePreview {
+    Ok(images::ImagePreview {
         data: result.data,
         image_type: result.output_type,
     })
@@ -121,7 +119,7 @@ impl OptimImageParams {
         let load_process = vec![
             PROCESS_LOAD.to_string(),
             self.data,
-            self.data_type.unwrap_or("".to_string()),
+            self.data_type.unwrap_or_else(|| "".to_string()),
         ];
 
         let quality = self.quality.unwrap_or(80);
@@ -129,7 +127,7 @@ impl OptimImageParams {
 
         let optim_process = vec![
             PROCESS_OPTIM.to_string(),
-            self.output_type.unwrap_or("".to_string()),
+            self.output_type.unwrap_or_else(|| "".to_string()),
             quality.to_string(),
             speed.to_string(),
         ];
