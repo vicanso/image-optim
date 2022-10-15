@@ -5,9 +5,29 @@ use image::{
     imageops::{crop, overlay, resize, FilterType},
     load, DynamicImage, ImageFormat,
 };
+use once_cell::sync::OnceCell;
 use snafu::{ensure, ResultExt, Snafu};
-use std::{ffi::OsStr, io::Cursor, vec};
+use std::{env, ffi::OsStr, io::Cursor, vec};
 use urlencoding::decode;
+
+static DEFAULT_QUALITY: OnceCell<u8> = OnceCell::new();
+static DEFAULT_SPEED: OnceCell<u8> = OnceCell::new();
+
+fn get_default_quality() -> u8 {
+    let result = DEFAULT_QUALITY.get_or_init(|| -> u8 {
+        let quality = env::var("DEFAULT_QUALITY").unwrap_or("90".to_string());
+        quality.parse::<u8>().unwrap_or(90)
+    });
+    result.to_owned()
+}
+
+fn get_default_speed() -> u8 {
+    let result = DEFAULT_SPEED.get_or_init(|| -> u8 {
+        let speed = env::var("DEFAULT_SPEED").unwrap_or("3".to_string());
+        speed.parse::<u8>().unwrap_or(3)
+    });
+    result.to_owned()
+}
 
 #[derive(Debug, Snafu)]
 pub enum ImageProcessingError {
@@ -117,12 +137,12 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
                 // 参数不符合
                 ensure!(sub_params.len() >= 1, he);
                 let output_type = sub_params[0].to_string();
-                let mut quality = 90;
+                let mut quality = get_default_quality();
                 if sub_params.len() > 1 {
                     quality = sub_params[1].parse::<u8>().context(ParseIntSnafu {})?;
                 }
 
-                let mut speed = 3;
+                let mut speed = get_default_speed();
                 if sub_params.len() > 2 {
                     speed = sub_params[2].parse::<u8>().context(ParseIntSnafu {})?;
                 }
