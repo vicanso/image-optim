@@ -1,3 +1,4 @@
+use crate::error::HTTPError;
 use crate::images::{to_gif, ImageError, ImageInfo};
 use async_trait::async_trait;
 use image::{
@@ -35,6 +36,25 @@ pub struct ProcessImage {
     pub original_size: usize,
     buffer: Vec<u8>,
     pub ext: String,
+}
+impl From<ImageProcessingError> for HTTPError {
+    fn from(err: ImageProcessingError) -> Self {
+        match err {
+            ImageProcessingError::Images { source } => {
+                let detail = source.to_detail();
+                HTTPError {
+                    status: 500,
+                    category: detail.category,
+                    message: detail.message,
+                }
+            }
+            _ => HTTPError {
+                status: 400,
+                category: "".to_string(),
+                message: err.to_string(),
+            },
+        }
+    }
 }
 
 impl ProcessImage {
@@ -95,10 +115,18 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             PROCESS_OPTIM => {
                 // 参数不符合
-                ensure!(sub_params.len() >= 3, he);
+                ensure!(sub_params.len() >= 1, he);
                 let output_type = sub_params[0].to_string();
-                let quality = sub_params[1].parse::<u8>().context(ParseIntSnafu {})?;
-                let speed = sub_params[2].parse::<u8>().context(ParseIntSnafu {})?;
+                let mut quality = 90;
+                if sub_params.len() > 1 {
+                    quality = sub_params[1].parse::<u8>().context(ParseIntSnafu {})?;
+                }
+
+                let mut speed = 3;
+                if sub_params.len() > 2 {
+                    speed = sub_params[2].parse::<u8>().context(ParseIntSnafu {})?;
+                }
+
                 img = OptimProcess::new(output_type, quality, speed)
                     .process(img)
                     .await?;
@@ -114,11 +142,14 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             PROCESS_WATERMARK => {
                 // 参数不符合
-                ensure!(sub_params.len() >= 2, he);
+                ensure!(sub_params.len() >= 1, he);
                 let url = decode(sub_params[0].as_str())
                     .context(FromUtfSnafu {})?
                     .to_string();
-                let position = WatermarkPosition::from_str(sub_params[1].as_str());
+                let mut position = WatermarkPosition::RightBottom;
+                if sub_params.len() > 1 {
+                    position = WatermarkPosition::from_str(sub_params[1].as_str());
+                }
                 let mut margin_left = 0;
                 if sub_params.len() > 2 {
                     margin_left = sub_params[2].parse::<i64>().context(ParseIntSnafu {})?;
@@ -258,11 +289,11 @@ impl WatermarkPosition {
             "top" => WatermarkPosition::Top,
             "rightTop" => WatermarkPosition::RightTop,
             "left" => WatermarkPosition::Left,
+            "center" => WatermarkPosition::Center,
             "right" => WatermarkPosition::Right,
             "leftBottom" => WatermarkPosition::LeftBottom,
             "bottom" => WatermarkPosition::Bottom,
-            "rightBottom" => WatermarkPosition::RightBottom,
-            _ => WatermarkPosition::Center,
+            _ => WatermarkPosition::RightBottom,
         }
     }
 }

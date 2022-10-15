@@ -1,4 +1,3 @@
-use crate::image_processing::ImageProcessingError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -42,25 +41,6 @@ impl IntoResponse for HTTPError {
     }
 }
 
-impl From<ImageProcessingError> for HTTPError {
-    fn from(err: ImageProcessingError) -> Self {
-        match err {
-            ImageProcessingError::Images { source } => {
-                let detail = source.to_detail();
-                HTTPError {
-                    status: 500,
-                    category: detail.category,
-                    message: detail.message,
-                }
-            }
-            _ => HTTPError {
-                status: 400,
-                category: "".to_string(),
-                message: err.to_string(),
-            },
-        }
-    }
-}
 impl From<std::string::FromUtf8Error> for HTTPError {
     fn from(error: std::string::FromUtf8Error) -> Self {
         HTTPError {
