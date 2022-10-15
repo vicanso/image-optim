@@ -7,7 +7,6 @@ features = ["panic_hooks"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.65"
 async-trait = "0.1.57"
 axum = "0.6.0-rc.2"
 base64 = "0.20.0-alpha.1"
@@ -20,7 +19,7 @@ mozjpeg = "0.9.4"
 reqwest = "0.11.12"
 rgb = "0.8.34"
 serde = { version = "1.0.145", features = ["derive"] }
-thiserror = "1.0.37"
+snafu = "0.7.2"
 tokio = { version = "1.21.2", features = ["macros", "rt", "rt-multi-thread", "net"] }
 tower = { version = "0.4.13", features = ["timeout"]}
 urlencoding = "2.1.2"

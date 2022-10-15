@@ -1,10 +1,10 @@
+use crate::image::HandleError;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
-use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPError {
@@ -41,11 +41,13 @@ impl IntoResponse for HTTPError {
         (status, Json(self)).into_response()
     }
 }
-impl From<ImageError> for HTTPError {
-    fn from(error: ImageError) -> Self {
+
+impl From<HandleError> for HTTPError {
+    fn from(err: HandleError) -> Self {
         HTTPError {
-            message: error.message,
-            category: error.category,
+            message: err.to_string(),
+            category: "image".to_string(),
+            status: 500,
             ..Default::default()
         }
     }
@@ -77,15 +79,7 @@ impl From<reqwest::header::ToStrError> for HTTPError {
         }
     }
 }
-impl From<std::io::Error> for HTTPError {
-    fn from(error: std::io::Error) -> Self {
-        HTTPError {
-            message: error.to_string(),
-            category: "io".to_string(),
-            ..Default::default()
-        }
-    }
-}
+
 impl From<image::ImageError> for HTTPError {
     fn from(error: image::ImageError) -> Self {
         HTTPError {
@@ -110,45 +104,6 @@ impl From<std::num::ParseIntError> for HTTPError {
             message: error.to_string(),
             category: "parseInt".to_string(),
             ..Default::default()
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ImageError {
-    pub message: String,
-    pub category: String,
-}
-
-impl From<imagequant::Error> for ImageError {
-    fn from(error: imagequant::Error) -> Self {
-        ImageError {
-            message: error.to_string(),
-            category: "imagequant".to_string(),
-        }
-    }
-}
-impl From<lodepng::Error> for ImageError {
-    fn from(error: lodepng::Error) -> Self {
-        ImageError {
-            message: error.to_string(),
-            category: "lodepng".to_string(),
-        }
-    }
-}
-impl From<image::ImageError> for ImageError {
-    fn from(error: image::ImageError) -> Self {
-        ImageError {
-            message: error.to_string(),
-            category: "image".to_string(),
-        }
-    }
-}
-impl From<std::string::String> for ImageError {
-    fn from(message: std::string::String) -> Self {
-        ImageError {
-            message,
-            category: "unknown".to_string(),
         }
     }
 }

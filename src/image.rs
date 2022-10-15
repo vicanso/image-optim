@@ -3,8 +3,8 @@ use axum::{
     http::{header, HeaderValue},
     response::{IntoResponse, Response},
 };
+use snafu::{ensure, ResultExt, Snafu};
 
-use super::error::ImageError;
 use image::{codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, ImageFormat, RgbaImage};
 use lodepng::Bitmap;
 use rgb::{ComponentBytes, RGB8, RGBA8};
@@ -12,6 +12,29 @@ use std::{
     ffi::OsStr,
     io::{BufRead, Read, Seek},
 };
+
+#[derive(Debug, Snafu)]
+pub enum HandleError {
+    #[snafu(display("Handle image fail, category:{category}, message:{source}"))]
+    Image {
+        category: String,
+        source: image::ImageError,
+    },
+    #[snafu(display("Handle image fail, category:{category}, message:{source}"))]
+    ImageQuant {
+        category: String,
+        source: imagequant::Error,
+    },
+    #[snafu(display("Handle image fail, category:{category}, message:{source}"))]
+    LodePNG {
+        category: String,
+        source: lodepng::Error,
+    },
+    #[snafu(display("Handle image fail, category:mozjpeg, message:unknown"))]
+    Mozjpeg {},
+}
+
+type Result<T, E = HandleError> = std::result::Result<T, E>;
 
 pub struct ImageInfo {
     // rgba像素
@@ -81,24 +104,33 @@ impl IntoResponse for ImagePreview {
 //     Ok(img.into())
 // }
 
-pub fn load<R: BufRead + Seek>(r: R, ext: String) -> Result<ImageInfo, ImageError> {
-    let format = ImageFormat::from_extension(OsStr::new(ext.as_str()))
-        .ok_or_else(|| "not support format".to_string())?;
-    let result = image::load(r, format)?;
+pub fn load<R: BufRead + Seek>(r: R, ext: String) -> Result<ImageInfo> {
+    let format = ImageFormat::from_extension(OsStr::new(ext.as_str())).unwrap_or(ImageFormat::Jpeg);
+    let result = image::load(r, format).context(ImageSnafu { category: "load" })?;
     let img = result.to_rgba8();
     Ok(img.into())
 }
 
-pub fn to_gif<R: Read>(r: R, speed: u8) -> Result<Vec<u8>, ImageError> {
-    let decoder = gif::GifDecoder::new(r)?;
+pub fn to_gif<R: Read>(r: R, speed: u8) -> Result<Vec<u8>> {
+    let decoder = gif::GifDecoder::new(r).context(ImageSnafu {
+        category: "gifDecode",
+    })?;
     let frames = decoder.into_frames();
 
     let mut w = Vec::new();
 
     {
         let mut encoder = gif::GifEncoder::new_with_speed(&mut w, speed as i32);
-        encoder.set_repeat(gif::Repeat::Infinite)?;
-        encoder.try_encode_frames(frames.into_iter())?;
+        encoder
+            .set_repeat(gif::Repeat::Infinite)
+            .context(ImageSnafu {
+                category: "gifSetRepeat",
+            })?;
+        encoder
+            .try_encode_frames(frames.into_iter())
+            .context(ImageSnafu {
+                category: "gitEncode",
+            })?;
     }
 
     Ok(w)
@@ -117,25 +149,43 @@ impl ImageInfo {
 
         output_data
     }
-    pub fn to_png(&self, quality: u8) -> Result<Vec<u8>, ImageError> {
+    pub fn to_png(&self, quality: u8) -> Result<Vec<u8>> {
         let mut liq = imagequant::new();
-        liq.set_quality(0, quality)?;
+        liq.set_quality(0, quality).context(ImageQuantSnafu {
+            category: "pngSetQuality",
+        })?;
 
-        let mut img = liq.new_image(self.buffer.as_ref(), self.width, self.height, 0.0)?;
+        let mut img = liq
+            .new_image(self.buffer.as_ref(), self.width, self.height, 0.0)
+            .context(ImageQuantSnafu {
+                category: "pngNewImage",
+            })?;
 
-        let mut res = liq.quantize(&mut img)?;
+        let mut res = liq.quantize(&mut img).context(ImageQuantSnafu {
+            category: "pngQuantize",
+        })?;
 
-        res.set_dithering_level(1.0)?;
+        res.set_dithering_level(1.0).context(ImageQuantSnafu {
+            category: "pngSetLevel",
+        })?;
 
-        let (palette, pixels) = res.remapped(&mut img)?;
+        let (palette, pixels) = res.remapped(&mut img).context(ImageQuantSnafu {
+            category: "pngRemapped",
+        })?;
         let mut enc = lodepng::Encoder::new();
-        enc.set_palette(&palette)?;
+        enc.set_palette(&palette).context(LodePNGSnafu {
+            category: "pngEncoder",
+        })?;
 
-        let buf = enc.encode(&pixels, self.width, self.height)?;
+        let buf = enc
+            .encode(&pixels, self.width, self.height)
+            .context(LodePNGSnafu {
+                category: "pngEncode",
+            })?;
 
         Ok(buf)
     }
-    pub fn to_webp(&self, quality: u8) -> Result<Vec<u8>, ImageError> {
+    pub fn to_webp(&self, quality: u8) -> Result<Vec<u8>> {
         let mut w = Vec::new();
 
         let q = match quality {
@@ -149,11 +199,14 @@ impl ImageInfo {
             self.width as u32,
             self.height as u32,
             image::ColorType::Rgba8,
-        )?;
+        )
+        .context(ImageSnafu {
+            category: "webpEncode",
+        })?;
 
         Ok(w)
     }
-    pub fn to_avif(&self, quality: u8, speed: u8) -> Result<Vec<u8>, ImageError> {
+    pub fn to_avif(&self, quality: u8, speed: u8) -> Result<Vec<u8>> {
         let mut w = Vec::new();
 
         let img = avif::AvifEncoder::new_with_speed_quality(&mut w, speed, quality);
@@ -162,11 +215,14 @@ impl ImageInfo {
             self.width as u32,
             self.height as u32,
             image::ColorType::Rgb8,
-        )?;
+        )
+        .context(ImageSnafu {
+            category: "avifEncode",
+        })?;
 
         Ok(w)
     }
-    pub fn to_mozjpeg(&self, quality: u8) -> Result<Vec<u8>, ImageError> {
+    pub fn to_mozjpeg(&self, quality: u8) -> Result<Vec<u8>> {
         let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
         comp.set_size(self.width, self.height);
         comp.set_mem_dest();
@@ -175,9 +231,10 @@ impl ImageInfo {
         comp.write_scanlines(self.get_rgb8().as_bytes());
         comp.finish_compress();
 
-        comp.data_to_vec().map_err(|()| ImageError {
-            message: "unknown".to_string(),
-            category: "mozjepg".to_string(),
-        })
+        let result = comp.data_to_vec();
+        // 如果处理失败，则出错
+        ensure!(result.is_ok(), MozjpegSnafu {});
+
+        Ok(result.unwrap())
     }
 }
