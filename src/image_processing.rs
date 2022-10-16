@@ -10,20 +10,20 @@ use snafu::{ensure, ResultExt, Snafu};
 use std::{env, ffi::OsStr, io::Cursor, vec};
 use urlencoding::decode;
 
-static DEFAULT_QUALITY: OnceCell<u8> = OnceCell::new();
-static DEFAULT_SPEED: OnceCell<u8> = OnceCell::new();
+static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
+static OPTIM_SPEED: OnceCell<u8> = OnceCell::new();
 
 fn get_default_quality() -> u8 {
-    let result = DEFAULT_QUALITY.get_or_init(|| -> u8 {
-        let quality = env::var("DEFAULT_QUALITY").unwrap_or("90".to_string());
+    let result = OPTIM_QUALITY.get_or_init(|| -> u8 {
+        let quality = env::var("OPTIM_QUALITY").unwrap_or_else(|_| "90".to_string());
         quality.parse::<u8>().unwrap_or(90)
     });
     result.to_owned()
 }
 
 fn get_default_speed() -> u8 {
-    let result = DEFAULT_SPEED.get_or_init(|| -> u8 {
-        let speed = env::var("DEFAULT_SPEED").unwrap_or("3".to_string());
+    let result = OPTIM_SPEED.get_or_init(|| -> u8 {
+        let speed = env::var("OPTIM_SPEED").unwrap_or_else(|_| "3".to_string());
         speed.parse::<u8>().unwrap_or(3)
     });
     result.to_owned()
@@ -135,7 +135,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             PROCESS_OPTIM => {
                 // 参数不符合
-                ensure!(sub_params.len() >= 1, he);
+                ensure!(!sub_params.is_empty(), he);
                 let output_type = sub_params[0].to_string();
                 let mut quality = get_default_quality();
                 if sub_params.len() > 1 {
@@ -162,7 +162,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             PROCESS_WATERMARK => {
                 // 参数不符合
-                ensure!(sub_params.len() >= 1, he);
+                ensure!(!sub_params.is_empty(), he);
                 let url = decode(sub_params[0].as_str())
                     .context(FromUtfSnafu {})?
                     .to_string();

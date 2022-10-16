@@ -12,5 +12,5 @@
 
 默认压缩质量与压缩速度可以通过env指定，具体如下：
 
-- `DEFAULT_QUALITY`: 默认压缩质量，如果不指定则为90
-- `DEFAULT_SPEED`: 默认压缩速度，如果不指定则为3，用于avif压缩
+- `OPTIM_QUALITY`: 默认压缩质量，如果不指定则为90
+- `OPTIM_SPEED`: 默认压缩速度，如果不指定则为3，用于avif压缩
