@@ -14,4 +14,4 @@
 
 - `OPTIM_QUALITY`: 默认压缩质量，如果不指定则为90
 - `OPTIM_SPEED`: 默认压缩速度，如果不指定则为3，用于avif压缩
-- `OPTIM_ALIAS_XXX`: 支持设置参数替换，例如`OPTIM_ALIAS_ABC=http://test.com`表示将参数中的ABC替换为http://test.com，用于简化图片处理的参数配置
+- `OPTIM_ALIAS_XXX`: 支持设置参数替换，例如`OPTIM_ALIAS_ABC=http://test.com`表示将参数中的ABC替换为 `http://test.com` ，用于简化图片处理的参数配置
