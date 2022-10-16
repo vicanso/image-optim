@@ -12,6 +12,7 @@ use urlencoding::decode;
 
 static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
 static OPTIM_SPEED: OnceCell<u8> = OnceCell::new();
+static OPTIM_ALIAS: OnceCell<String> = OnceCell::new();
 
 fn get_default_quality() -> u8 {
     let result = OPTIM_QUALITY.get_or_init(|| -> u8 {
@@ -101,6 +102,24 @@ impl ProcessImage {
     }
 }
 
+fn get_alias() -> &'static String {
+    OPTIM_ALIAS.get_or_init(|| -> String {
+        let prefix = "OPTIM_ALIAS_";
+        let mut arr = Vec::new();
+        for (key, value) in env::vars() {
+            if !key.starts_with(prefix) {
+                continue;
+            }
+            let k = key[prefix.len()..].to_string();
+            if k.is_empty() {
+                continue;
+            }
+            arr.push(format!("{}={}", k, value));
+        }
+        arr.join(" ")
+    })
+}
+
 pub const PROCESS_LOAD: &str = "load";
 pub const PROCESS_RESIZE: &str = "resize";
 pub const PROCESS_OPTIM: &str = "optim";
@@ -112,11 +131,34 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
     let he = ParamsInvalidSnafu {
         message: "params is invalid",
     };
+    let alias = get_alias();
+    let alias_list = alias.split(' ');
+    let mut alias_replacements = Vec::new();
+    for item in alias_list {
+        let kv: Vec<_> = item.split('=').collect();
+        if kv.len() != 2 {
+            continue;
+        }
+        alias_replacements.push(kv);
+    }
+    let replacements = &alias_replacements;
+
     for params in tasks {
         if params.len() < 2 {
             continue;
         }
-        let sub_params = &params[1..];
+        let mut sub_params = Vec::with_capacity(params.len() - 1);
+        for (i, param) in params.iter().enumerate() {
+            if i == 0 {
+                continue;
+            }
+            // 替换alias
+            let mut value = param.clone();
+            for replacement in replacements {
+                value = value.replace(replacement[0], replacement[1]);
+            }
+            sub_params.push(value);
+        }
         match params[0].as_str() {
             PROCESS_LOAD => {
                 let data = sub_params[0].to_string();
