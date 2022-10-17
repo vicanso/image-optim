@@ -5,16 +5,14 @@ use image::{
     imageops::{crop, overlay, resize, FilterType},
     load, DynamicImage, ImageFormat,
 };
+use lru::LruCache;
 use once_cell::sync::OnceCell;
 use snafu::{ensure, ResultExt, Snafu};
-use std::{env, ffi::OsStr, io::Cursor, vec};
+use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
 use urlencoding::decode;
 
-static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
-static OPTIM_SPEED: OnceCell<u8> = OnceCell::new();
-static OPTIM_ALIAS: OnceCell<String> = OnceCell::new();
-
 fn get_default_quality() -> u8 {
+    static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
     let result = OPTIM_QUALITY.get_or_init(|| -> u8 {
         let quality = env::var("OPTIM_QUALITY").unwrap_or_else(|_| "90".to_string());
         quality.parse::<u8>().unwrap_or(90)
@@ -23,11 +21,56 @@ fn get_default_quality() -> u8 {
 }
 
 fn get_default_speed() -> u8 {
+    static OPTIM_SPEED: OnceCell<u8> = OnceCell::new();
     let result = OPTIM_SPEED.get_or_init(|| -> u8 {
         let speed = env::var("OPTIM_SPEED").unwrap_or_else(|_| "3".to_string());
         speed.parse::<u8>().unwrap_or(3)
     });
     result.to_owned()
+}
+
+fn get_alias() -> &'static String {
+    static OPTIM_ALIAS: OnceCell<String> = OnceCell::new();
+    OPTIM_ALIAS.get_or_init(|| -> String {
+        let prefix = "OPTIM_ALIAS_";
+        let mut arr = Vec::new();
+        for (key, value) in env::vars() {
+            if !key.starts_with(prefix) {
+                continue;
+            }
+            let k = key[prefix.len()..].to_string();
+            if k.is_empty() {
+                continue;
+            }
+            arr.push(format!("{}={}", k, value));
+        }
+        arr.join(" ")
+    })
+}
+
+fn get_lru_cache() -> &'static Mutex<LruCache<String, ProcessImage>> {
+    static CACHE: OnceCell<Mutex<LruCache<String, ProcessImage>>> = OnceCell::new();
+    CACHE.get_or_init(|| {
+        let c = LruCache::new(NonZeroUsize::new(10).unwrap());
+        Mutex::new(c)
+    })
+}
+
+fn get_image_cache(key: String) -> Option<ProcessImage> {
+    if let Ok(mut c) = get_lru_cache().lock() {
+        if let Some(result) = c.get(&key) {
+            return Some(result.clone());
+        }
+    }
+    None
+}
+
+fn set_image_cache(key: String, v: &ProcessImage) {
+    // TODO 缓存是否设置有效期
+    if let Ok(mut c) = get_lru_cache().lock() {
+        // 失败忽略
+        c.put(key, v.clone());
+    }
 }
 
 #[derive(Debug, Snafu)]
@@ -51,7 +94,7 @@ pub enum ImageProcessingError {
 }
 type Result<T, E = ImageProcessingError> = std::result::Result<T, E>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ProcessImage {
     di: DynamicImage,
     pub original_size: usize,
@@ -100,24 +143,6 @@ impl ProcessImage {
             Ok(self.buffer.clone())
         }
     }
-}
-
-fn get_alias() -> &'static String {
-    OPTIM_ALIAS.get_or_init(|| -> String {
-        let prefix = "OPTIM_ALIAS_";
-        let mut arr = Vec::new();
-        for (key, value) in env::vars() {
-            if !key.starts_with(prefix) {
-                continue;
-            }
-            let k = key[prefix.len()..].to_string();
-            if k.is_empty() {
-                continue;
-            }
-            arr.push(format!("{}={}", k, value));
-        }
-        arr.join(" ")
-    })
 }
 
 pub const PROCESS_LOAD: &str = "load";
@@ -220,9 +245,17 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
                 if sub_params.len() > 3 {
                     margin_top = sub_params[3].parse::<i64>().context(ParseIntSnafu {})?;
                 }
-                let watermark = LoaderProcess::new(url, "".to_string())
-                    .process(ProcessImage::new())
-                    .await?;
+                // 读取缓存
+                let watermark = if let Some(img) = get_image_cache(url.clone()) {
+                    img
+                } else {
+                    let img = LoaderProcess::new(url.clone(), "".to_string())
+                        .process(ProcessImage::new())
+                        .await?;
+
+                    set_image_cache(url, &img);
+                    img
+                };
                 let pro = WatermarkProcess::new(watermark.di, position, margin_left, margin_top);
                 img = pro.process(img).await?;
             }

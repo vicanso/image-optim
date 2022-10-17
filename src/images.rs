@@ -121,6 +121,11 @@ impl IntoResponse for ImagePreview {
         if let Ok(value) = HeaderValue::from_str(result.as_ref()) {
             res.headers_mut().insert(header::CONTENT_TYPE, value);
         }
+        // 图片设置为可缓存5分钟
+        res.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=300"),
+        );
 
         res
     }

@@ -1,8 +1,9 @@
 use axum::{
-    http::StatusCode,
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
+use http::HeaderValue;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,7 +38,11 @@ impl IntoResponse for HTTPError {
             Ok(status) => status,
             Err(_) => StatusCode::BAD_REQUEST,
         };
-        (status, Json(self)).into_response()
+        // 对于出错设置为no-cache
+        let mut res = Json(self).into_response();
+        res.headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        (status, res).into_response()
     }
 }
 

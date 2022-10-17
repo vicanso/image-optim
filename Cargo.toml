@@ -13,6 +13,7 @@ http = "0.2.8"
 image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder"] }
 imagequant = "4.0.4"
 lodepng = "3.7.0"
+lru = "0.8.1"
 mime = "0.3.16"
 mime_guess = "2.0.4"
 mozjpeg = "0.9.4"
