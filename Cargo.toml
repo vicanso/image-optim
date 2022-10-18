@@ -11,7 +11,7 @@ axum = "0.6.0-rc.2"
 base64 = "0.20.0-alpha.1"
 dssim = "3.2.3"
 http = "0.2.8"
-image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder", "avif-decoder"] }
+image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder"] }
 imagequant = "4.0.4"
 lodepng = "3.7.0"
 lru = "0.8.1"

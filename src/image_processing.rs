@@ -592,10 +592,12 @@ impl Process for OptimProcess {
         // 或者无原始数据
         if img.ext != original_type || data.len() < original_size || original_size == 0 {
             img.buffer = data;
-            // TODO avif decoder会失败
-            let c = Cursor::new(img.buffer.clone());
-            let format = ImageFormat::from_extension(OsStr::new(img.ext.as_str()));
-            img.di = load(c, format.unwrap()).context(ImageSnafu {})?;
+            // TODO avif decoder会失败，确认是否有其它方式
+            if img.ext != "avif" {
+                let c = Cursor::new(img.buffer.clone());
+                let format = ImageFormat::from_extension(OsStr::new(img.ext.as_str()));
+                img.di = load(c, format.unwrap()).context(ImageSnafu {})?;
+            }
         }
 
         Ok(img)
