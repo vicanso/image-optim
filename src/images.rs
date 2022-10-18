@@ -107,6 +107,7 @@ impl From<RgbaImage> for ImageInfo {
 }
 
 pub struct ImagePreview {
+    pub diff: f64,
     pub data: Vec<u8>,
     pub image_type: String,
 }
@@ -121,11 +122,15 @@ impl IntoResponse for ImagePreview {
         if let Ok(value) = HeaderValue::from_str(result.as_ref()) {
             res.headers_mut().insert(header::CONTENT_TYPE, value);
         }
+
         // 图片设置为可缓存5分钟
         res.headers_mut().insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=300"),
         );
+        if let Ok(value) = HeaderValue::from_str(self.diff.to_string().as_str()) {
+            res.headers_mut().insert("X-Dssim-Diff", value);
+        }
 
         res
     }

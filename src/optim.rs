@@ -6,19 +6,21 @@ use crate::images;
 use crate::response::ResponseResult;
 use axum::{
     extract::{Query, RawQuery},
-    routing::{get, post},
+    routing::get,
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
 
 pub fn new_router() -> Router {
-    let r = Router::new();
+    let optim_images = Router::new().route("/", get(optim_image_preview).post(optim_image));
+    let pipe_line = Router::new()
+        .route("/", get(pipeline_image))
+        .route("/preview", get(pipeline_image_preview));
 
-    r.route("/optim-images", get(optim_image_preview))
-        .route("/optim-images", post(optim_image))
-        .route("/pipeline-images", get(pipeline_image))
-        .route("/pipeline-images/preview", get(pipeline_image_preview))
+    Router::new()
+        .nest("/optim-images", optim_images)
+        .nest("/pipeline-images", pipe_line)
 }
 
 async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
@@ -36,6 +38,7 @@ async fn pipeline(desc: Vec<Vec<String>>) -> Result<OptimResult, HTTPError> {
     }
 
     Ok(OptimResult {
+        diff: process_img.diff,
         ratio,
         data,
         output_type: process_img.ext,
@@ -48,6 +51,7 @@ async fn optim_image_preview(
     let result = handle(params).await?;
 
     Ok(images::ImagePreview {
+        diff: result.diff,
         data: result.data,
         image_type: result.output_type,
     })
@@ -58,6 +62,7 @@ async fn optim_image(
 ) -> ResponseResult<Json<OptimImageResult>> {
     let result = handle(params).await?;
     Ok(Json(OptimImageResult {
+        diff: result.diff,
         ratio: result.ratio,
         data: base64::encode(result.data),
         output_type: result.output_type,
@@ -88,7 +93,9 @@ async fn pipeline_image(RawQuery(query): RawQuery) -> ResponseResult<Json<OptimI
     let desc = convert_query_to_desc(query)?;
 
     let result = pipeline(desc).await?;
+
     Ok(Json(OptimImageResult {
+        diff: result.diff,
         ratio: result.ratio,
         data: base64::encode(result.data),
         output_type: result.output_type,
@@ -99,6 +106,7 @@ async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<ima
 
     let result = pipeline(desc).await?;
     Ok(images::ImagePreview {
+        diff: result.diff,
         data: result.data,
         image_type: result.output_type,
     })
@@ -141,12 +149,14 @@ impl OptimImageParams {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OptimImageResult {
+    diff: f64,
     data: String,
     output_type: String,
     ratio: usize,
 }
 
 struct OptimResult {
+    diff: f64,
     data: Vec<u8>,
     output_type: String,
     ratio: usize,

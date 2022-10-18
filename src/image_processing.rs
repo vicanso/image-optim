@@ -1,12 +1,14 @@
 use crate::error::HTTPError;
 use crate::images::{to_gif, ImageError, ImageInfo};
 use async_trait::async_trait;
+use dssim::Dssim;
 use image::{
     imageops::{crop, overlay, resize, FilterType},
-    load, DynamicImage, ImageFormat,
+    load, DynamicImage, ImageFormat, RgbaImage,
 };
 use lru::LruCache;
 use once_cell::sync::OnceCell;
+use rgb::FromSlice;
 use snafu::{ensure, ResultExt, Snafu};
 use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
 use urlencoding::decode;
@@ -96,7 +98,9 @@ type Result<T, E = ImageProcessingError> = std::result::Result<T, E>;
 
 #[derive(Default, Clone)]
 pub struct ProcessImage {
+    original: Option<RgbaImage>,
     di: DynamicImage,
+    pub diff: f64,
     pub original_size: usize,
     buffer: Vec<u8>,
     pub ext: String,
@@ -128,6 +132,7 @@ impl ProcessImage {
             di: DynamicImage::new_rgba8(0, 0),
             buffer: Vec::new(),
             ext: "".to_string(),
+            ..Default::default()
         }
     }
     pub fn get_buffer(&self) -> Result<Vec<u8>> {
@@ -142,6 +147,31 @@ impl ProcessImage {
         } else {
             Ok(self.buffer.clone())
         }
+    }
+    fn get_diff(&self) -> f64 {
+        // 如果无数据
+        if self.original.is_none() {
+            return -1.0;
+        }
+        // 已确保一定有数据
+        let original = self.original.clone().unwrap();
+        // 如果宽高不一致，则不比对
+        if original.width() != self.di.width() || original.height() != self.di.height() {
+            return -1.0;
+        }
+        let width = original.width() as usize;
+        let height = original.height() as usize;
+        let attr = Dssim::new();
+        let gp1 = attr
+            .create_image_rgba(original.as_raw().as_rgba(), width, height)
+            .unwrap();
+        let gp2 = attr
+            .create_image_rgba(self.di.clone().to_rgba8().as_raw().as_rgba(), width, height)
+            .unwrap();
+        let (diff, _) = attr.compare(&gp1, gp2);
+        let value: f64 = diff.into();
+        // 放大1千倍
+        value * 1000.0
     }
 }
 
@@ -192,6 +222,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
                     ext = sub_params[1].to_string();
                 }
                 img = LoaderProcess::new(data, ext).process(img).await?;
+                img.original = Some(img.di.to_rgba8().clone())
             }
             PROCESS_RESIZE => {
                 // 参数不符合
@@ -262,6 +293,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             _ => {}
         }
     }
+    img.diff = img.get_diff();
     Ok(img)
 }
 
@@ -314,6 +346,7 @@ impl LoaderProcess {
             di,
             buffer: original_data,
             ext,
+            ..Default::default()
         })
     }
 }
@@ -559,6 +592,10 @@ impl Process for OptimProcess {
         // 或者无原始数据
         if img.ext != original_type || data.len() < original_size || original_size == 0 {
             img.buffer = data;
+            // TODO avif decoder会失败
+            let c = Cursor::new(img.buffer.clone());
+            let format = ImageFormat::from_extension(OsStr::new(img.ext.as_str()));
+            img.di = load(c, format.unwrap()).context(ImageSnafu {})?;
         }
 
         Ok(img)
