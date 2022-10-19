@@ -5,7 +5,10 @@ use axum::{
 };
 use snafu::{ensure, ResultExt, Snafu};
 
-use image::{codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, ImageFormat, RgbaImage};
+use avif_decode::Decoder;
+use image::{
+    codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, DynamicImage, ImageFormat, RgbaImage,
+};
 use lodepng::Bitmap;
 use rgb::{ComponentBytes, RGB8, RGBA8};
 use std::{
@@ -26,12 +29,19 @@ pub enum ImageError {
         source: imagequant::Error,
     },
     #[snafu(display("Handle image fail, category:{category}, message:{source}"))]
+    AvifDecode {
+        category: String,
+        source: avif_decode::Error,
+    },
+    #[snafu(display("Handle image fail, category:{category}, message:{source}"))]
     LodePNG {
         category: String,
         source: lodepng::Error,
     },
     #[snafu(display("Handle image fail, category:mozjpeg, message:unknown"))]
     Mozjpeg {},
+    #[snafu(display("Handle image fail"))]
+    Unknown,
 }
 
 pub struct ImageErrorDetail {
@@ -53,6 +63,14 @@ impl ImageError {
             ImageError::LodePNG { category, source } => ImageErrorDetail {
                 category: category.to_string(),
                 message: source.to_string(),
+            },
+            ImageError::AvifDecode { category, source } => ImageErrorDetail {
+                category: category.to_string(),
+                message: source.to_string(),
+            },
+            ImageError::Unknown {} => ImageErrorDetail {
+                category: "unknown".to_string(),
+                message: self.to_string(),
             },
             ImageError::Mozjpeg {} => ImageErrorDetail {
                 category: "mozjpeg".to_string(),
@@ -133,6 +151,33 @@ impl IntoResponse for ImagePreview {
         }
 
         res
+    }
+}
+
+pub fn avif_decode(data: &[u8]) -> Result<DynamicImage> {
+    let avif_result = Decoder::from_avif(data)
+        .context(AvifDecodeSnafu {
+            category: "decode".to_string(),
+        })?
+        .to_image()
+        .context(AvifDecodeSnafu {
+            category: "decode".to_string(),
+        })?;
+    match avif_result {
+        avif_decode::Image::Rgb8(img) => {
+            let width = img.width();
+            let height = img.height();
+            let mut buf = Vec::with_capacity(width * height * 3);
+            for item in img.buf() {
+                buf.push(item.r);
+                buf.push(item.g);
+                buf.push(item.b);
+            }
+            let rgb_image = image::RgbImage::from_raw(width as u32, height as u32, buf)
+                .ok_or(ImageError::Unknown)?;
+            Ok(DynamicImage::ImageRgb8(rgb_image))
+        }
+        _ => Err(ImageError::Unknown),
     }
 }
 

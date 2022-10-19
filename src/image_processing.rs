@@ -1,5 +1,5 @@
 use crate::error::HTTPError;
-use crate::images::{to_gif, ImageError, ImageInfo};
+use crate::images::{avif_decode, to_gif, ImageError, ImageInfo};
 use async_trait::async_trait;
 use dssim::Dssim;
 use image::{
@@ -27,6 +27,15 @@ fn get_default_speed() -> u8 {
     let result = OPTIM_SPEED.get_or_init(|| -> u8 {
         let speed = env::var("OPTIM_SPEED").unwrap_or_else(|_| "3".to_string());
         speed.parse::<u8>().unwrap_or(3)
+    });
+    result.to_owned()
+}
+
+fn is_disable_dssim() -> bool {
+    static OPTIM_DISABLE_DSSIM: OnceCell<bool> = OnceCell::new();
+    let result = OPTIM_DISABLE_DSSIM.get_or_init(|| -> bool {
+        let disable = env::var("OPTIM_DISABLE_DSSIM").unwrap_or_else(|_| "".to_string());
+        disable == "1"
     });
     result.to_owned()
 }
@@ -180,6 +189,12 @@ pub const PROCESS_RESIZE: &str = "resize";
 pub const PROCESS_OPTIM: &str = "optim";
 pub const PROCESS_CROP: &str = "crop";
 pub const PROCESS_WATERMARK: &str = "watermark";
+
+const IMAGE_TYPE_GIF: &str = "gif";
+const IMAGE_TYPE_PNG: &str = "png";
+const IMAGE_TYPE_AVIF: &str = "avif";
+const IMAGE_TYPE_WEBP: &str = "webp";
+const IMAGE_TYPE_JPEG: &str = "jpeg";
 
 pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
     let mut img = ProcessImage::new();
@@ -570,18 +585,18 @@ impl Process for OptimProcess {
         img.ext = output_type.clone();
 
         let data = match output_type.as_str() {
-            "gif" => {
+            IMAGE_TYPE_GIF => {
                 let c = Cursor::new(img.buffer.clone());
                 to_gif(c, 10).context(ImagesSnafu {})?
             }
             _ => {
                 match output_type.as_str() {
-                    "png" => info.to_png(quality).context(ImagesSnafu {})?,
-                    "avif" => info.to_avif(quality, speed).context(ImagesSnafu {})?,
-                    "webp" => info.to_webp(quality).context(ImagesSnafu {})?,
+                    IMAGE_TYPE_PNG => info.to_png(quality).context(ImagesSnafu {})?,
+                    IMAGE_TYPE_AVIF => info.to_avif(quality, speed).context(ImagesSnafu {})?,
+                    IMAGE_TYPE_WEBP => info.to_webp(quality).context(ImagesSnafu {})?,
                     // 其它的全部使用jpeg
                     _ => {
-                        img.ext = "jpeg".to_string();
+                        img.ext = IMAGE_TYPE_JPEG.to_string();
                         info.to_mozjpeg(quality).context(ImagesSnafu {})?
                     }
                 }
@@ -592,11 +607,17 @@ impl Process for OptimProcess {
         // 或者无原始数据
         if img.ext != original_type || data.len() < original_size || original_size == 0 {
             img.buffer = data;
-            // TODO avif decoder会失败，确认是否有其它方式
-            if img.ext != "avif" {
-                let c = Cursor::new(img.buffer.clone());
-                let format = ImageFormat::from_extension(OsStr::new(img.ext.as_str()));
-                img.di = load(c, format.unwrap()).context(ImageSnafu {})?;
+            // 如果禁用了dssim，则不需要根据当前buffer生成img
+            if !is_disable_dssim() {
+                // image 的avif decoder有问题
+                // 暂使用其它模块
+                if img.ext == IMAGE_TYPE_AVIF {
+                    img.di = avif_decode(&img.buffer).context(ImagesSnafu {})?;
+                } else {
+                    let c = Cursor::new(&img.buffer);
+                    let format = ImageFormat::from_extension(OsStr::new(img.ext.as_str()));
+                    img.di = load(c, format.unwrap()).context(ImageSnafu {})?;
+                }
             }
         }
 
