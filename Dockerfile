@@ -3,7 +3,7 @@ FROM rust:alpine as builder
 COPY . /image-optim
 
 RUN apk update \
-  && apk add git make musl-dev nasm openssl-dev \
+  && apk add git make musl-dev nasm openssl-dev cmake \
   && cd /image-optim \
   && cargo build --release
 
@@ -15,7 +15,7 @@ EXPOSE 3000
 
 RUN addgroup -g 1000 rust \
   && adduser -u 1000 -G rust -s /bin/sh -D rust \
-  && apk add --no-cache ca-certificates tzdata libc6-compat
+  && apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /image-optim/target/release/image-optim /usr/local/bin/image-optim
 COPY --from=builder /image-optim/entrypoint.sh /entrypoint.sh
