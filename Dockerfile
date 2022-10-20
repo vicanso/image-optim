@@ -3,7 +3,7 @@ FROM rust:alpine as builder
 COPY . /image-optim
 
 RUN apk update \
-  && apk add git make build-base nasm openssl-dev cmake \
+  && apk add git make build-base nasm openssl-dev cmake pkgconfig \
   && cd /image-optim \
   && cargo build --release
 
@@ -25,6 +25,7 @@ USER rust
 WORKDIR /home/rust
 
 HEALTHCHECK --timeout=10s --interval=10s CMD [ "wget", "http://127.0.0.1:3000/ping", "-q", "-O", "-"]
+
 
 CMD ["image-optim"]
 
