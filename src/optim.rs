@@ -51,6 +51,7 @@ async fn optim_image_preview(
     let result = handle(params).await?;
 
     Ok(images::ImagePreview {
+        ratio: result.ratio,
         diff: result.diff,
         data: result.data,
         image_type: result.output_type,
@@ -106,6 +107,7 @@ async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<ima
 
     let result = pipeline(desc).await?;
     Ok(images::ImagePreview {
+        ratio: result.ratio,
         diff: result.diff,
         data: result.data,
         image_type: result.output_type,

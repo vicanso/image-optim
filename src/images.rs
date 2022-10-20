@@ -126,6 +126,7 @@ impl From<RgbaImage> for ImageInfo {
 
 pub struct ImagePreview {
     pub diff: f64,
+    pub ratio: usize,
     pub data: Vec<u8>,
     pub image_type: String,
 }
@@ -149,6 +150,9 @@ impl IntoResponse for ImagePreview {
         if let Ok(value) = HeaderValue::from_str(self.diff.to_string().as_str()) {
             res.headers_mut().insert("X-Dssim-Diff", value);
         }
+        if let Ok(value) = HeaderValue::from_str(self.ratio.to_string().as_str()) {
+            res.headers_mut().insert("X-Ratio", value);
+        } 
 
         res
     }

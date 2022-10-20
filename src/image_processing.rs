@@ -157,10 +157,17 @@ impl ProcessImage {
             Ok(self.buffer.clone())
         }
     }
+    fn support_dssim(&self) -> bool {
+        !is_disable_dssim() && self.ext != IMAGE_TYPE_GIF
+    }
     fn get_diff(&self) -> f64 {
         // 如果无数据
         if self.original.is_none() {
             return -1.0;
+        }
+        // 如果是gif或者禁用了dssim
+        if !self.support_dssim() {
+            return -1.0
         }
         // 已确保一定有数据
         let original = self.original.clone().unwrap();
@@ -607,8 +614,9 @@ impl Process for OptimProcess {
         // 或者无原始数据
         if img.ext != original_type || data.len() < original_size || original_size == 0 {
             img.buffer = data;
-            // 如果禁用了dssim，则不需要根据当前buffer生成img
-            if !is_disable_dssim() {
+            // 支持dssim再根据数据生成image
+            // 否则无此必要
+            if img.support_dssim(){
                 // image 的avif decoder有问题
                 // 暂使用其它模块
                 if img.ext == IMAGE_TYPE_AVIF {
