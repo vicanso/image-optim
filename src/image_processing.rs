@@ -12,6 +12,7 @@ use rgb::FromSlice;
 use snafu::{ensure, ResultExt, Snafu};
 use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
 use urlencoding::decode;
+use log::{info};
 
 fn get_default_quality() -> u8 {
     static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
@@ -236,6 +237,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             sub_params.push(value);
         }
+        info!("processing:{} {:?}", params[0], sub_params);
         match params[0].as_str() {
             PROCESS_LOAD => {
                 let data = sub_params[0].to_string();
@@ -314,6 +316,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             _ => {}
         }
+        info!("processing:{} done", params[0]);
     }
     img.diff = img.get_diff();
     Ok(img)

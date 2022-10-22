@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::process;
 use std::time::Duration;
 use tower::ServiceBuilder;
+use env_logger::Env;
 
 mod error;
 mod image_processing;
@@ -11,8 +12,17 @@ mod images;
 mod optim;
 mod response;
 
+fn init_logger() {
+    let env = Env::default()
+        .filter_or("MY_LOG_LEVEL", "info")
+        .write_style_or("MY_LOG_STYLE", "always");
+
+    env_logger::init_from_env(env);
+}
+
 #[tokio::main]
 async fn main() {
+    init_logger();
     ctrlc::set_handler(|| {
         // TODO
         // 退出程序，增加graceful close处理

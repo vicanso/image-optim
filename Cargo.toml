@@ -12,10 +12,12 @@ axum = "0.6.0-rc.2"
 base64 = "0.20.0-alpha.1"
 ctrlc = { version = "3.2.3", features = ["termination"] }
 dssim = "3.2.3"
+env_logger = "0.9.1"
 http = "0.2.8"
 image = { version = "0.24.4", features = ["webp-encoder", "avif-encoder"] }
 imagequant = "4.0.4"
 lodepng = "3.7.0"
+log = "0.4.17"
 lru = "0.8.1"
 mime = "0.3.16"
 mime_guess = "2.0.4"
