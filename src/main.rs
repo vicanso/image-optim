@@ -1,6 +1,7 @@
 use axum::{error_handling::HandleErrorLayer, routing::get, BoxError, Router};
 use error::HTTPError;
 use std::net::SocketAddr;
+use std::process;
 use std::time::Duration;
 use tower::ServiceBuilder;
 
@@ -12,6 +13,13 @@ mod response;
 
 #[tokio::main]
 async fn main() {
+    ctrlc::set_handler(|| {
+        // TODO
+        // 退出程序，增加graceful close处理
+        process::exit(0);
+    })
+    .unwrap();
+
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // TODO 是否记录异常

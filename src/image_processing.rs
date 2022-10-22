@@ -167,7 +167,7 @@ impl ProcessImage {
         }
         // 如果是gif或者禁用了dssim
         if !self.support_dssim() {
-            return -1.0
+            return -1.0;
         }
         // 已确保一定有数据
         let original = self.original.clone().unwrap();
@@ -616,7 +616,7 @@ impl Process for OptimProcess {
             img.buffer = data;
             // 支持dssim再根据数据生成image
             // 否则无此必要
-            if img.support_dssim(){
+            if img.support_dssim() {
                 // image 的avif decoder有问题
                 // 暂使用其它模块
                 if img.ext == IMAGE_TYPE_AVIF {

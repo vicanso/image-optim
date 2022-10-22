@@ -152,7 +152,7 @@ impl IntoResponse for ImagePreview {
         }
         if let Ok(value) = HeaderValue::from_str(self.ratio.to_string().as_str()) {
             res.headers_mut().insert("X-Ratio", value);
-        } 
+        }
 
         res
     }
