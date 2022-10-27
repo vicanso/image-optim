@@ -19,4 +19,4 @@
 - `OPTIM_QUALITY`: 默认压缩质量，如果不指定则为90
 - `OPTIM_SPEED`: 默认压缩速度，如果不指定则为3，用于avif压缩(avif压缩较慢，速度选择越高压缩率越低)
 - `OPTIM_ALIAS_XXX`: 支持设置参数替换，例如`OPTIM_ALIAS_ABC=http://test.com`表示将参数中的ABC替换为 `http://test.com` ，用于简化图片处理的参数配置
-- `OPTIM_DISABLE_DSSIM`: 是否禁用dssim图片对比，如果不需要比对则可禁用
+- `OPTIM_DISABLE_DSSIM`: 是否禁用dssim图片对比，如果不需要比对则可禁用(设置为1)
