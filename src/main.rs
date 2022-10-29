@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::process;
 use std::time::Duration;
 use tower::ServiceBuilder;
-use env_logger::Env;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
 mod image_processing;
@@ -13,11 +13,7 @@ mod optim;
 mod response;
 
 fn init_logger() {
-    let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "info")
-        .write_style_or("MY_LOG_STYLE", "always");
-
-    env_logger::init_from_env(env);
+    tracing_subscriber::registry().with(fmt::layer()).init();
 }
 
 #[tokio::main]
@@ -45,7 +41,10 @@ async fn main() {
                 .timeout(Duration::from_secs(30)),
         );
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let port = 3000;
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    tracing::info!(port, "Server is starting");
+
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
