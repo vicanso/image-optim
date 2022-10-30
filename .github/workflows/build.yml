@@ -8,8 +8,8 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-22.04	
-    timeout-minutes: 300
+    runs-on: self-hosted
+    timeout-minutes: 60
 
     steps:
     - name: Set Swap Space
