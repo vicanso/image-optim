@@ -8,14 +8,15 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
+    timeout-minutes: 600
 
     steps:
     - name: Set Swap Space
       uses: pierotofy/set-swap-space@v1.0
       with:
-        swap-size-gb: 10
+        swap-size-gb: 16
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
