@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.58"
 avif-decode = "0.2.2"
-axum = "0.6.0-rc.2"
+axum = "0.6.1"
 base64 = "0.20.0-alpha.1"
 ctrlc = { version = "3.2.3", features = ["termination"] }
 dssim = "3.2.3"

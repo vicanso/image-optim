@@ -24,5 +24,5 @@
 ## build
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 vicanso/image-optim --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t vicanso/image-optim --push .
 ```
