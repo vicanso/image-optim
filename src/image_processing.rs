@@ -2,6 +2,7 @@ use crate::error::HTTPError;
 use crate::images::{avif_decode, to_gif, ImageError, ImageInfo};
 use async_trait::async_trait;
 use dssim::Dssim;
+use image::imageops::grayscale;
 use image::{
     imageops::{crop, overlay, resize, FilterType},
     load, DynamicImage, ImageFormat, RgbaImage,
@@ -195,6 +196,7 @@ pub const PROCESS_LOAD: &str = "load";
 pub const PROCESS_RESIZE: &str = "resize";
 pub const PROCESS_OPTIM: &str = "optim";
 pub const PROCESS_CROP: &str = "crop";
+pub const PROCESS_GRAY: &str = "gray";
 pub const PROCESS_WATERMARK: &str = "watermark";
 
 const IMAGE_TYPE_GIF: &str = "gif";
@@ -254,6 +256,9 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
                 let width = sub_params[0].parse::<u32>().context(ParseIntSnafu {})?;
                 let height = sub_params[1].parse::<u32>().context(ParseIntSnafu {})?;
                 img = ResizeProcess::new(width, height).process(img).await?;
+            }
+            PROCESS_GRAY => {
+                img = GrayProcess::new().process(img).await?;
             }
             PROCESS_OPTIM => {
                 // 参数不符合
@@ -419,6 +424,25 @@ impl Process for ResizeProcess {
         let result = resize(&img.di, w, h, FilterType::Lanczos3);
         img.buffer = vec![];
         img.di = DynamicImage::ImageRgba8(result);
+        Ok(img)
+    }
+}
+
+
+pub struct GrayProcess {}
+
+impl GrayProcess {
+    pub fn new() -> Self {
+        GrayProcess{}
+    } 
+}
+
+#[async_trait]
+impl Process for GrayProcess {
+    async fn process(&self, pi: ProcessImage) -> Result<ProcessImage> {
+        let mut img = pi;
+        img.di = DynamicImage::ImageLuma8(grayscale(&img.di));
+        img.buffer = vec![];
         Ok(img)
     }
 }
