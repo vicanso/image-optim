@@ -6,6 +6,7 @@
 - `resize`: resize=width|height，指定宽度调整图片的尺寸，如果宽或者高设置为0，则表示等比例调整
 - `crop`: crop=x|y|width|height，指定参数裁剪
 - `watermark`: watermark=url|position|marginLeft|marginTop，指定水印的url获取水印，并添加至指定位置。position如果不指定则为rightBottom，marginLeft与marginTop如果不指定则为0
+- `gray`: gray，将图片处理为灰白颜色
 - `optim`: optim=format|quality|speed，处理图片压缩转换格式，quality如果不指定，则读取env配置(默认为90)，speed如果不指定则读取env配置(默认为3)
 
 在服务启动之后，`http://127.0.0.1:3000/pipeline-images/preview`为图片处理预览地址。例如读取`http://127.0.0.1:3013/test.jpeg`的图片并压缩jpeg，处理的url为`http://127.0.0.1:3000/pipeline-images/preview?load=http%3A%2F%2F127.0.0.1%3A3013%2Ftest.jpeg&optim=jpeg%7C90`
