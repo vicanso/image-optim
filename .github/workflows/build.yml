@@ -23,8 +23,6 @@ jobs:
         sudo rm -rf /usr/share/dotnet
         du -sh /usr/local/lib/android
         sudo rm -rf /usr/local/lib/android 
-        du -sh /opt/ghc
-        sudo rm -rf /opt/ghc
         export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
         sudo swapoff $SWAP_FILE
         sudo rm $SWAP_FILE
