@@ -18,11 +18,13 @@ jobs:
       run: |
         swapon --show=NAME | tail -n 1
         df -lh
+        du -sh /usr/share/dotnet
+        du -sh /usr/local/lib/android
         export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
         sudo swapoff $SWAP_FILE
         sudo rm $SWAP_FILE
         export SWAP_FILE=/swapfile
-        sudo fallocate -l 32G $SWAP_FILE
+        sudo fallocate -l 24G $SWAP_FILE
         sudo chmod 600 $SWAP_FILE
         sudo mkswap $SWAP_FILE
         sudo swapon $SWAP_FILE
@@ -33,6 +35,7 @@ jobs:
         free -h
         echo
         swapon --show
+        df -lh
         echo
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
