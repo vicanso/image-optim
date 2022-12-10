@@ -22,10 +22,10 @@ jobs:
         export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
         sudo swapoff $SWAP_FILE
         sudo rm $SWAP_FILE
-        export SWAP_FILE=/swapfile
         MACHINE_TYPE=`uname -m`
         if [ ${MACHINE_TYPE} == 'aarch64' ]; then
-          sudo fallocate -l 24G $SWAP_FILE
+          export SWAP_FILE=/swapfile
+          sudo fallocate -l 32G $SWAP_FILE
         else
           sudo fallocate -l 10G $SWAP_FILE
         fi
