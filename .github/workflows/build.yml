@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ release ]
 
 jobs:
 
@@ -14,6 +14,7 @@ jobs:
 
     steps:
     # pierotofy/set-swap-space@v1.0
+    # easimon/maximize-build-space
     - name: Change Swap Space
       run: |
         swapon --show=NAME | tail -n 1
@@ -22,6 +23,8 @@ jobs:
         sudo rm -rf /usr/share/dotnet
         du -sh /usr/local/lib/android
         sudo rm -rf /usr/local/lib/android 
+        du -sh /opt/ghc
+        sudo rm -rf /opt/ghc
         export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
         sudo swapoff $SWAP_FILE
         sudo rm $SWAP_FILE
