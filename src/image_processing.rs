@@ -428,13 +428,12 @@ impl Process for ResizeProcess {
     }
 }
 
-
 pub struct GrayProcess {}
 
 impl GrayProcess {
     pub fn new() -> Self {
-        GrayProcess{}
-    } 
+        GrayProcess {}
+    }
 }
 
 #[async_trait]

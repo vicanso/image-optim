@@ -7,4 +7,4 @@ lint:
 fmt:
 	cargo fmt --all --
 dev:
-	cargo run
+	LOG_LEVEL=5 cargo run

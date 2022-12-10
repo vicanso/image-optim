@@ -1,10 +1,11 @@
 use axum::{error_handling::HandleErrorLayer, routing::get, BoxError, Router};
 use error::HTTPError;
-use std::net::SocketAddr;
 use std::process;
 use std::time::Duration;
+use std::{env, net::SocketAddr, str::FromStr};
 use tower::ServiceBuilder;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 mod error;
 mod image_processing;
@@ -13,7 +14,14 @@ mod optim;
 mod response;
 
 fn init_logger() {
-    tracing_subscriber::registry().with(fmt::layer()).init();
+    let mut level = Level::INFO;
+    if let Ok(log_level) = env::var("LOG_LEVEL") {
+        if let Ok(value) = Level::from_str(log_level.as_str()) {
+            level = value;
+        }
+    }
+    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
 #[tokio::main]
