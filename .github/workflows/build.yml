@@ -13,14 +13,22 @@ jobs:
     timeout-minutes: 600
 
     steps:
-    - name: Show Space
+    - name: Change Swap Space
       run: |
         swapon --show=NAME | tail -n 1
         df -lh
+        export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
+        sudo swapoff $SWAP_FILE
+        sudo rm $SWAP_FILE
+        export SWAP_FILE=/swapfile
+        sudo fallocate -l 1G $SWAP_FILE
+        sudo chmod 600 $SWAP_FILE
+        sudo mkswap $SWAP_FILE
+        sudo swapon $SWAP_FILE
     - name: Set Swap Space
       uses: pierotofy/set-swap-space@v1.0
       with:
-        swap-size-gb: 13
+        swap-size-gb: 16
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
