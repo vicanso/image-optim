@@ -13,6 +13,10 @@ jobs:
     timeout-minutes: 600
 
     steps:
+    - name: Show Space
+      run: |
+        swapon --show=NAME | tail -n 1
+        df -lh
     - name: Set Swap Space
       uses: pierotofy/set-swap-space@v1.0
       with:
