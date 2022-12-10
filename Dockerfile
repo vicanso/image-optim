@@ -6,8 +6,9 @@ COPY . /image-optim
 
 RUN apk update 
 RUN apk add git make build-base nasm openssl-dev cmake pkgconfig aom-libs perl
+RUN rustup target list --installed
 RUN cd /image-optim \
-  && cargo build --release
+  && cargo build
 
 FROM alpine 
 
