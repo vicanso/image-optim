@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 600
 
     steps:
+    # pierotofy/set-swap-space@v1.0
+    # aarch64使用的资源较多，因此分开设置
     - name: Change Swap Space
       run: |
         swapon --show=NAME | tail -n 1
@@ -21,14 +23,23 @@ jobs:
         sudo swapoff $SWAP_FILE
         sudo rm $SWAP_FILE
         export SWAP_FILE=/swapfile
-        sudo fallocate -l 1G $SWAP_FILE
+        MACHINE_TYPE=`uname -m`
+        if [ ${MACHINE_TYPE} == 'aarch64' ]; then
+          sudo fallocate -l 24G $SWAP_FILE
+        else
+          sudo fallocate -l 10G $SWAP_FILE
+        fi
         sudo chmod 600 $SWAP_FILE
         sudo mkswap $SWAP_FILE
         sudo swapon $SWAP_FILE
-    - name: Set Swap Space
-      uses: pierotofy/set-swap-space@v1.0
-      with:
-        swap-size-gb: 32
+    - name: Swap space report after modification
+      shell: bash
+      run: |
+        echo "Memory and swap:"
+        free -h
+        echo
+        swapon --show
+        echo
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
