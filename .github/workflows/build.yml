@@ -14,7 +14,6 @@ jobs:
 
     steps:
     # pierotofy/set-swap-space@v1.0
-    # aarch64使用的资源较多，因此分开设置
     - name: Change Swap Space
       run: |
         swapon --show=NAME | tail -n 1
@@ -22,13 +21,8 @@ jobs:
         export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
         sudo swapoff $SWAP_FILE
         sudo rm $SWAP_FILE
-        MACHINE_TYPE=`uname -m`
-        if [ ${MACHINE_TYPE} == 'aarch64' ]; then
-          export SWAP_FILE=/swapfile
-          sudo fallocate -l 32G $SWAP_FILE
-        else
-          sudo fallocate -l 10G $SWAP_FILE
-        fi
+        export SWAP_FILE=/swapfile
+        sudo fallocate -l 36G $SWAP_FILE
         sudo chmod 600 $SWAP_FILE
         sudo mkswap $SWAP_FILE
         sudo swapon $SWAP_FILE
