@@ -1,11 +1,11 @@
 use axum::{error_handling::HandleErrorLayer, routing::get, BoxError, Router};
 use error::HTTPError;
-use std::process;
 use std::time::Duration;
 use std::{env, net::SocketAddr, str::FromStr};
 use tower::ServiceBuilder;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
+use tokio::signal;
 
 mod error;
 mod image_processing;
@@ -27,17 +27,11 @@ fn init_logger() {
 #[tokio::main]
 async fn main() {
     init_logger();
-    ctrlc::set_handler(|| {
-        // TODO
-        // 退出程序，增加graceful close处理
-        process::exit(0);
-    })
-    .unwrap();
 
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // TODO 是否记录异常
-        println!("{:?}", info);
+        tracing::info!("panic info:{:?}", info);
         default_panic(info);
     }));
     let app = Router::new()
@@ -55,6 +49,7 @@ async fn main() {
 
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
 }
@@ -77,4 +72,30 @@ async fn handle_error(err: BoxError) -> HTTPError {
             status: 500,
         }
     }
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("signal received, starting graceful shutdown");
 }
