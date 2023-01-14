@@ -7,11 +7,13 @@
 - `crop`: crop=x|y|width|height，指定参数裁剪
 - `watermark`: watermark=url|position|marginLeft|marginTop，指定水印的url获取水印，并添加至指定位置。position如果不指定则为rightBottom，marginLeft与marginTop如果不指定则为0
 - `gray`: gray，将图片处理为灰白颜色
-- `optim`: optim=format|quality|speed，处理图片压缩转换格式，quality如果不指定，则读取env配置(默认为90)，speed如果不指定则读取env配置(默认为3)
+- `optim`: optim=format|quality|speed，处理图片压缩转换格式(png, avif, webp, jpeg)，quality如果不指定，则读取env配置(默认为90)，speed如果不指定则读取env配置(默认为3)
+
+注意：avif的处理时间较长，因此如果使用avif格式需要将结果缓存避免每次生成
 
 在服务启动之后，`http://127.0.0.1:3000/pipeline-images/preview`为图片处理预览地址。例如读取`http://127.0.0.1:3013/test.jpeg`的图片并压缩jpeg，处理的url为`http://127.0.0.1:3000/pipeline-images/preview?load=http%3A%2F%2F127.0.0.1%3A3013%2Ftest.jpeg&optim=jpeg%7C90`
 
-响应头中的`X-Dssim-Diff`为压缩后的图片与原图片的差异值，`X-Ratio`为压缩后的数据与原图片的百分比.
+响应头中的`X-Dssim-Diff`为压缩后的图片与原图片的差异值(人眼感知)，`X-Ratio`为压缩后的数据与原图片的百分比.
 
 ## ENV
 
