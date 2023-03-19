@@ -41,15 +41,15 @@ jobs:
         df -lh
         echo
     - name: Checkout
-        uses: actions/checkout@v3
+      uses: actions/checkout@v3
     - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: |
-            vicanso/image-optim
-          tags: |
-            type=semver,pattern={{version}}
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: |
+          vicanso/image-optim
+        tags: |
+          type=semver,pattern={{version}}
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
     - name: Set up Docker Buildx
