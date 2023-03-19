@@ -1,6 +1,7 @@
 use crate::error::HTTPError;
 use crate::images::{avif_decode, to_gif, ImageError, ImageInfo};
 use async_trait::async_trait;
+use base64::{engine::general_purpose, Engine as _};
 use dssim::Dssim;
 use image::imageops::grayscale;
 use image::{
@@ -358,7 +359,9 @@ impl LoaderProcess {
                 }
                 resp.bytes().await.context(ReqwestSnafu {})?.into()
             }
-            _ => base64::decode(data).context(Base64DecodeSnafu {})?,
+            _ => general_purpose::STANDARD_NO_PAD
+                .decode(data.as_bytes())
+                .context(Base64DecodeSnafu {})?,
         };
         let c = Cursor::new(original_data.clone());
         let format = ImageFormat::from_extension(OsStr::new(ext.clone().as_str()));

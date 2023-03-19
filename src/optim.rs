@@ -9,6 +9,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
 
@@ -65,7 +66,7 @@ async fn optim_image(
     Ok(Json(OptimImageResult {
         diff: result.diff,
         ratio: result.ratio,
-        data: base64::encode(result.data),
+        data: general_purpose::STANDARD_NO_PAD.encode(result.data),
         output_type: result.output_type,
     }))
 }
@@ -98,7 +99,7 @@ async fn pipeline_image(RawQuery(query): RawQuery) -> ResponseResult<Json<OptimI
     Ok(Json(OptimImageResult {
         diff: result.diff,
         ratio: result.ratio,
-        data: base64::encode(result.data),
+        data: general_purpose::STANDARD_NO_PAD.encode(result.data),
         output_type: result.output_type,
     }))
 }
@@ -129,7 +130,7 @@ impl OptimImageParams {
         let load_process = vec![
             PROCESS_LOAD.to_string(),
             self.data,
-            self.data_type.unwrap_or_else(|| "".to_string()),
+            self.data_type.unwrap_or_default(),
         ];
 
         let quality = self.quality.unwrap_or(80);
@@ -137,7 +138,7 @@ impl OptimImageParams {
 
         let optim_process = vec![
             PROCESS_OPTIM.to_string(),
-            self.output_type.unwrap_or_else(|| "".to_string()),
+            self.output_type.unwrap_or_default(),
             quality.to_string(),
             speed.to_string(),
         ];

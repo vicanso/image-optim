@@ -1,15 +1,15 @@
-use axum::{error_handling::HandleErrorLayer, routing::get, BoxError, Router};
-use error::HTTPError;
+use axum::{error_handling::HandleErrorLayer, middleware::from_fn, routing::get, Router};
 use std::time::Duration;
 use std::{env, net::SocketAddr, str::FromStr};
+use tokio::signal;
 use tower::ServiceBuilder;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use tokio::signal;
 
 mod error;
 mod image_processing;
 mod images;
+mod middleware;
 mod optim;
 mod response;
 
@@ -39,16 +39,19 @@ async fn main() {
         .merge(optim::new_router())
         .layer(
             ServiceBuilder::new()
-                .layer(HandleErrorLayer::new(handle_error))
+                .layer(HandleErrorLayer::new(error::handle_error))
                 .timeout(Duration::from_secs(30)),
-        );
+        )
+        // 后面的layer先执行
+        .layer(from_fn(middleware::access_log))
+        .layer(from_fn(middleware::entry));
 
     let port = 3000;
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!(port, "Server is starting");
 
     axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
@@ -56,22 +59,6 @@ async fn main() {
 
 async fn ping() -> &'static str {
     "pong"
-}
-
-async fn handle_error(err: BoxError) -> HTTPError {
-    if err.is::<tower::timeout::error::Elapsed>() {
-        HTTPError {
-            message: "Request took too long".to_string(),
-            category: "timeout".to_string(),
-            status: 408,
-        }
-    } else {
-        HTTPError {
-            message: format!("Unhandled internal error: {}", err),
-            category: "internalServerError".to_string(),
-            status: 500,
-        }
-    }
 }
 
 async fn shutdown_signal() {

@@ -1,10 +1,10 @@
+use axum::http::{header, HeaderValue, Method, StatusCode, Uri};
 use axum::{
-    http::{header, StatusCode},
     response::{IntoResponse, Response},
-    Json,
+    BoxError, Json,
 };
-use http::HeaderValue;
 use serde::Serialize;
+use tracing::error;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HTTPError {
@@ -12,6 +12,7 @@ pub struct HTTPError {
     pub category: String,
     pub status: u16,
 }
+pub type HTTPResult<T> = Result<T, HTTPError>;
 
 impl HTTPError {
     pub fn new(message: &str, category: &str) -> Self {
@@ -19,6 +20,13 @@ impl HTTPError {
             message: message.to_string(),
             category: category.to_string(),
             status: 400,
+        }
+    }
+    pub fn new_with_category_status(message: &str, category: &str, status: u16) -> Self {
+        Self {
+            message: message.to_string(),
+            category: category.to_string(),
+            status,
         }
     }
 }
@@ -54,4 +62,18 @@ impl From<std::string::FromUtf8Error> for HTTPError {
             ..Default::default()
         }
     }
+}
+
+pub async fn handle_error(
+    // `Method` and `Uri` are extractors so they can be used here
+    method: Method,
+    uri: Uri,
+    // the last argument must be the error itself
+    err: BoxError,
+) -> HTTPError {
+    error!("method:{}, uri:{}, error:{}", method, uri, err.to_string());
+    if err.is::<tower::timeout::error::Elapsed>() {
+        return HTTPError::new_with_category_status("Request took too long", "timeout", 408);
+    }
+    HTTPError::new(&err.to_string(), "exception")
 }
