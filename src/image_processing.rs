@@ -1,5 +1,6 @@
 use crate::error::HTTPError;
 use crate::images::{avif_decode, to_gif, ImageError, ImageInfo};
+use crate::{task_local::*, tl_info};
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
 use dssim::Dssim;
@@ -240,7 +241,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             sub_params.push(value);
         }
         let task = &params[0];
-        tracing::info!(task, "processing {:?}", sub_params);
+        tl_info!(task, "processing {:?}", sub_params,);
         match task.as_str() {
             PROCESS_LOAD => {
                 let data = sub_params[0].to_string();
@@ -322,7 +323,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             _ => {}
         }
-        tracing::info!(task, "processing done");
+        tl_info!(task, "processing done");
     }
     img.diff = img.get_diff();
     Ok(img)

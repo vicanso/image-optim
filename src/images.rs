@@ -7,7 +7,8 @@ use snafu::{ensure, ResultExt, Snafu};
 
 use avif_decode::Decoder;
 use image::{
-    codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, DynamicImage, ImageFormat, RgbaImage,
+    codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, DynamicImage, ImageEncoder,
+    ImageFormat, RgbaImage,
 };
 use lodepng::Bitmap;
 use rgb::{ComponentBytes, RGB8, RGBA8};

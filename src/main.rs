@@ -13,6 +13,8 @@ mod middleware;
 mod optim;
 mod response;
 
+mod task_local;
+
 fn init_logger() {
     let mut level = Level::INFO;
     if let Ok(log_level) = env::var("LOG_LEVEL") {
