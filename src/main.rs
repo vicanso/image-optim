@@ -22,14 +22,18 @@ fn init_logger() {
             level = value;
         }
     }
-    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(level)
+        .with_timer(
+            tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339()
+                .expect("could not get local offset!"),
+        )
+        .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
 #[tokio::main]
-async fn main() {
-    init_logger();
-
+async fn run() {
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // TODO 是否记录异常
@@ -87,4 +91,12 @@ async fn shutdown_signal() {
     }
 
     tracing::info!("signal received, starting graceful shutdown");
+}
+
+fn main() {
+    // Because we need to get the local offset before Tokio spawns any threads, our `main`
+    // function cannot use `tokio::main`.
+
+    init_logger();
+    run();
 }
