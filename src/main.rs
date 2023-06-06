@@ -12,7 +12,6 @@ mod images;
 mod middleware;
 mod optim;
 mod response;
-
 mod task_local;
 
 fn init_logger() {

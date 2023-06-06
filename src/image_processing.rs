@@ -3,16 +3,16 @@ use crate::images::{avif_decode, to_gif, ImageError, ImageInfo};
 use crate::{task_local::*, tl_info};
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine as _};
+use chrono::offset::Local;
 use dssim::Dssim;
 use image::imageops::grayscale;
-use image::{
-    imageops::{crop, overlay, resize, FilterType},
-    load, DynamicImage, ImageFormat, RgbaImage,
-};
+use image::imageops::{crop, overlay, resize, FilterType};
+use image::{load, DynamicImage, ImageFormat, RgbaImage};
 use lru::LruCache;
 use once_cell::sync::OnceCell;
 use rgb::FromSlice;
 use snafu::{ensure, ResultExt, Snafu};
+use std::ops::Sub;
 use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
 use urlencoding::decode;
 
@@ -43,9 +43,9 @@ fn is_disable_dssim() -> bool {
     result.to_owned()
 }
 
-fn get_alias() -> &'static String {
-    static OPTIM_ALIAS: OnceCell<String> = OnceCell::new();
-    OPTIM_ALIAS.get_or_init(|| -> String {
+fn get_alias() -> &'static Vec<String> {
+    static OPTIM_ALIAS: OnceCell<Vec<String>> = OnceCell::new();
+    OPTIM_ALIAS.get_or_init(|| -> Vec<String> {
         let prefix = "OPTIM_ALIAS_";
         let mut arr = Vec::new();
         for (key, value) in env::vars() {
@@ -58,7 +58,7 @@ fn get_alias() -> &'static String {
             }
             arr.push(format!("{}={}", k, value));
         }
-        arr.join(" ")
+        arr
     })
 }
 
@@ -212,8 +212,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
     let he = ParamsInvalidSnafu {
         message: "params is invalid",
     };
-    let alias = get_alias();
-    let alias_list = alias.split(' ');
+    let alias_list = get_alias();
     let mut alias_replacements = Vec::new();
     for item in alias_list {
         let kv: Vec<_> = item.split('=').collect();
@@ -241,7 +240,7 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             sub_params.push(value);
         }
         let task = &params[0];
-        tl_info!(task, "processing {:?}", sub_params,);
+        let now = Local::now();
         match task.as_str() {
             PROCESS_LOAD => {
                 let data = sub_params[0].to_string();
@@ -323,7 +322,12 @@ pub async fn run(tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
             }
             _ => {}
         }
-        tl_info!(task, "processing done");
+        let cost = Local::now().sub(now);
+        tl_info!(
+            task,
+            params = sub_params.join(","),
+            cost = cost.num_milliseconds(),
+        );
     }
     img.diff = img.get_diff();
     Ok(img)
@@ -647,14 +651,21 @@ impl Process for OptimProcess {
             // 支持dssim再根据数据生成image
             // 否则无此必要
             if img.support_dssim() {
-                // image 的avif decoder有问题
+                // image 的avif decoder有其它依赖
                 // 暂使用其它模块
-                if img.ext == IMAGE_TYPE_AVIF {
-                    img.di = avif_decode(&img.buffer).context(ImagesSnafu {})?;
+                // decode如果失败则忽略
+                // 因为只用于计算dssim
+                let result = if img.ext == IMAGE_TYPE_AVIF {
+                    avif_decode(&img.buffer).context(ImagesSnafu {})
                 } else {
                     let c = Cursor::new(&img.buffer);
                     let format = ImageFormat::from_extension(OsStr::new(img.ext.as_str()));
-                    img.di = load(c, format.unwrap()).context(ImageSnafu {})?;
+                    load(c, format.unwrap()).context(ImageSnafu {})
+                };
+                if let Ok(value) = result {
+                    img.di = value;
+                } else if let Err(err) = result {
+                    tl_info!(category = "decodeImage", err = err.to_string(),);
                 }
             }
         }

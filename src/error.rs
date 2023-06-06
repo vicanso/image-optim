@@ -1,8 +1,6 @@
 use axum::http::{header, HeaderValue, Method, StatusCode, Uri};
-use axum::{
-    response::{IntoResponse, Response},
-    BoxError, Json,
-};
+use axum::response::{IntoResponse, Response};
+use axum::{BoxError, Json};
 use serde::Serialize;
 use tracing::error;
 

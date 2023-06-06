@@ -11,7 +11,7 @@ avif-decode = "0.2.2"
 axum = "0.6.18"
 axum-client-ip = "0.4.1"
 base64 = "0.21.2"
-chrono = "0.4.24"
+chrono = "0.4.26"
 dssim = "3.2.4"
 http = "0.2.9"
 image = { version = "0.24.6", features = ["webp-encoder", "avif-encoder"] }
@@ -22,7 +22,7 @@ mime = "0.3.17"
 mime_guess = "2.0.4"
 mozjpeg = "0.9.4"
 nanoid = "0.4.0"
-once_cell = "1.17.1"
+once_cell = "1.18.0"
 reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls"] }
 rgb = "0.8.36"
 serde = { version = "1.0.162", features = ["derive"] }

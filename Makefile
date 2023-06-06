@@ -10,6 +10,6 @@ lint:
 fmt:
 	cargo fmt --all --
 dev:
-	cargo run
+	cargo watch -w src -x 'run'
 dev-debug:
 	LOG_LEVEL=5 cargo run

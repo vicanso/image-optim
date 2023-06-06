@@ -1,17 +1,14 @@
-use axum::{
-    body::Full,
-    http::{header, HeaderValue},
-    response::{IntoResponse, Response},
-};
-use snafu::{ensure, ResultExt, Snafu};
-
 use avif_decode::Decoder;
-use image::{
-    codecs::avif, codecs::gif, codecs::webp, AnimationDecoder, DynamicImage, ImageEncoder,
-    ImageFormat, RgbaImage,
-};
+use axum::body::Full;
+use axum::http::{header, HeaderValue};
+use axum::response::{IntoResponse, Response};
+use image::codecs::avif;
+use image::codecs::gif;
+use image::codecs::webp;
+use image::{AnimationDecoder, DynamicImage, ImageEncoder, ImageFormat, RgbaImage};
 use lodepng::Bitmap;
 use rgb::{ComponentBytes, RGB8, RGBA8};
+use snafu::{ensure, ResultExt, Snafu};
 use std::{
     ffi::OsStr,
     io::{BufRead, Read, Seek},
@@ -177,6 +174,47 @@ pub fn avif_decode(data: &[u8]) -> Result<DynamicImage> {
                 buf.push(item.r);
                 buf.push(item.g);
                 buf.push(item.b);
+            }
+            let rgb_image = image::RgbImage::from_raw(width as u32, height as u32, buf)
+                .ok_or(ImageError::Unknown)?;
+            Ok(DynamicImage::ImageRgb8(rgb_image))
+        }
+        avif_decode::Image::Rgba8(img) => {
+            let width = img.width();
+            let height = img.height();
+            let mut buf = Vec::with_capacity(width * height * 4);
+            for item in img.buf() {
+                buf.push(item.r);
+                buf.push(item.g);
+                buf.push(item.b);
+                buf.push(item.a);
+            }
+            let rgba_image = image::RgbaImage::from_raw(width as u32, height as u32, buf)
+                .ok_or(ImageError::Unknown)?;
+            Ok(DynamicImage::ImageRgba8(rgba_image))
+        }
+        avif_decode::Image::Rgba16(img) => {
+            let width = img.width();
+            let height = img.height();
+            let mut buf = Vec::with_capacity(width * height * 4);
+            for item in img.buf() {
+                buf.push((item.r / 257) as u8);
+                buf.push((item.g / 257) as u8);
+                buf.push((item.b / 257) as u8);
+                buf.push((item.a / 257) as u8);
+            }
+            let rgba_image = image::RgbaImage::from_raw(width as u32, height as u32, buf)
+                .ok_or(ImageError::Unknown)?;
+            Ok(DynamicImage::ImageRgba8(rgba_image))
+        }
+        avif_decode::Image::Rgb16(img) => {
+            let width = img.width();
+            let height = img.height();
+            let mut buf = Vec::with_capacity(width * height * 3);
+            for item in img.buf() {
+                buf.push((item.r / 257) as u8);
+                buf.push((item.g / 257) as u8);
+                buf.push((item.b / 257) as u8);
             }
             let rgb_image = image::RgbImage::from_raw(width as u32, height as u32, buf)
                 .ok_or(ImageError::Unknown)?;

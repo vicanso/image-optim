@@ -1,16 +1,13 @@
-use std::vec;
-
 use crate::error::HTTPError;
 use crate::image_processing::{run, PROCESS_LOAD, PROCESS_OPTIM};
 use crate::images;
 use crate::response::ResponseResult;
-use axum::{
-    extract::{Query, RawQuery},
-    routing::get,
-    Json, Router,
-};
+use axum::extract::{Query, RawQuery};
+use axum::routing::get;
+use axum::{Json, Router};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::vec;
 use urlencoding::decode;
 
 pub fn new_router() -> Router {
