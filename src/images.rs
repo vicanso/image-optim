@@ -145,7 +145,7 @@ impl IntoResponse for ImagePreview {
             header::CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=300"),
         );
-        if let Ok(value) = HeaderValue::from_str(self.diff.to_string().as_str()) {
+        if let Ok(value) = HeaderValue::from_str(&format!("{:.2}", self.diff)) {
             res.headers_mut().insert("X-Dssim-Diff", value);
         }
         if let Ok(value) = HeaderValue::from_str(self.ratio.to_string().as_str()) {
@@ -337,10 +337,10 @@ impl ImageInfo {
 
         let img = avif::AvifEncoder::new_with_speed_quality(&mut w, speed, quality);
         img.write_image(
-            self.get_rgb8().as_bytes(),
+            self.buffer.as_bytes(),
             self.width as u32,
             self.height as u32,
-            image::ColorType::Rgb8,
+            image::ColorType::Rgba8,
         )
         .context(ImageSnafu {
             category: "avifEncode",
