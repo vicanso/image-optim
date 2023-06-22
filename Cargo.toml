@@ -20,7 +20,7 @@ lodepng = "3.7.2"
 lru = "0.10.0"
 mime = "0.3.17"
 mime_guess = "2.0.4"
-mozjpeg = "0.9.4"
+mozjpeg = "0.9.6"
 nanoid = "0.4.0"
 once_cell = "1.18.0"
 reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls"] }

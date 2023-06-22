@@ -13,6 +13,7 @@ use once_cell::sync::OnceCell;
 use rgb::FromSlice;
 use snafu::{ensure, ResultExt, Snafu};
 use std::ops::Sub;
+use std::time::Duration;
 use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
 use urlencoding::decode;
 
@@ -354,7 +355,15 @@ impl LoaderProcess {
         let mut ext = self.ext.clone();
         let original_data = match data.starts_with("http") {
             true => {
-                let resp = reqwest::get(data).await.context(ReqwestSnafu {})?;
+                let resp = reqwest::Client::builder()
+                    .build()
+                    .context(ReqwestSnafu {})?
+                    .get(data)
+                    .timeout(Duration::from_secs(5 * 60))
+                    .send()
+                    .await
+                    .context(ReqwestSnafu {})?;
+
                 if let Some(content_type) = resp.headers().get("Content-Type") {
                     let str = content_type.to_str().context(HTTPHeaderToStrSnafu {})?;
                     let arr: Vec<_> = str.split('/').collect();
