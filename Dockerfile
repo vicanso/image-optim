@@ -23,6 +23,8 @@ RUN addgroup -g 1000 rust \
 COPY --from=builder /image-optim/target/release/image-optim /usr/local/bin/image-optim
 COPY --from=builder /image-optim/entrypoint.sh /entrypoint.sh
 
+ENV RUST_ENV=production
+
 USER rust
 
 WORKDIR /home/rust
