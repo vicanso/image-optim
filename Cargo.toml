@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-trait = "0.1.69"
+async-trait = "0.1.71"
 avif-decode = "0.2.2"
 axum = "0.6.18"
 axum-client-ip = "0.4.1"
@@ -26,7 +26,7 @@ nanoid = "0.4.0"
 once_cell = "1.18.0"
 reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls"] }
 rgb = "0.8.36"
-serde = { version = "1.0.166", features = ["derive"] }
+serde = { version = "1.0.9", features = ["derive"] }
 snafu = "0.7.4"
 time = "0.3.22"
 tokio = { version = "1.29.1", features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }
@@ -38,3 +38,4 @@ urlencoding = "2.1.2"
 [profile.release]
 strip = true 
 lto = true
+codegen-units = 1 
