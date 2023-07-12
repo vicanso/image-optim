@@ -2,8 +2,6 @@ FROM rust:alpine as builder
 
 COPY . /image-optim
 
-# COPY cargo-config /root/.cargo/config
-
 RUN apk update 
 RUN apk add git make build-base nasm openssl-dev cmake pkgconfig aom-libs perl
 RUN rustup target list --installed
