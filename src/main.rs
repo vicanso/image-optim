@@ -1,5 +1,4 @@
 use axum::{error_handling::HandleErrorLayer, middleware::from_fn, routing::get, Router};
-use human_panic::setup_panic;
 use std::time::Duration;
 use std::{env, net::SocketAddr, str::FromStr};
 use tokio::signal;
@@ -102,7 +101,6 @@ async fn shutdown_signal() {
 fn main() {
     // Because we need to get the local offset before Tokio spawns any threads, our `main`
     // function cannot use `tokio::main`.
-    setup_panic!();
     init_logger();
     run();
 }

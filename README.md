@@ -13,7 +13,7 @@
 
 在服务启动之后，`http://127.0.0.1:3000/pipeline-images/preview`为图片处理预览地址。例如读取`http://127.0.0.1:3013/test.jpeg`的图片并压缩jpeg，处理的url为`http://127.0.0.1:3000/pipeline-images/preview?load=http%3A%2F%2F127.0.0.1%3A3013%2Ftest.jpeg&optim=jpeg%7C90`
 
-响应头中的`X-Dssim-Diff`为压缩后的图片与原图片的差异值(人眼感知)，`X-Ratio`为压缩后的数据与原图片的百分比.
+响应头中的`X-Dssim-Diff`为压缩后的图片与原图片的差异值(人眼感知，数值*1000)，`X-Ratio`为压缩后的数据与原图片的百分比.
 
 ## ENV
 
