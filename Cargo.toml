@@ -14,7 +14,7 @@ base64 = "0.21.2"
 chrono = "0.4.26"
 dssim = "3.2.4"
 http = "0.2.9"
-image = { version = "0.24.6", features = ["webp-encoder", "avif-encoder", "gif"], default-features = false}
+image = { version = "0.24.6", features = ["webp-encoder", "avif-encoder"]}
 imagequant = { version = "4.2.0", default-features = false }
 lodepng = "3.7.2"
 lru = "0.10.0"
