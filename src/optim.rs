@@ -63,7 +63,7 @@ async fn optim_image(
     Ok(Json(OptimImageResult {
         diff: result.diff,
         ratio: result.ratio,
-        data: general_purpose::STANDARD_NO_PAD.encode(result.data),
+        data: general_purpose::STANDARD.encode(result.data),
         output_type: result.output_type,
     }))
 }
@@ -96,7 +96,7 @@ async fn pipeline_image(RawQuery(query): RawQuery) -> ResponseResult<Json<OptimI
     Ok(Json(OptimImageResult {
         diff: result.diff,
         ratio: result.ratio,
-        data: general_purpose::STANDARD_NO_PAD.encode(result.data),
+        data: general_purpose::STANDARD.encode(result.data),
         output_type: result.output_type,
     }))
 }

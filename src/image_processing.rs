@@ -373,7 +373,7 @@ impl LoaderProcess {
                 }
                 resp.bytes().await.context(ReqwestSnafu {})?.into()
             }
-            _ => general_purpose::STANDARD_NO_PAD
+            _ => general_purpose::STANDARD
                 .decode(data.as_bytes())
                 .context(Base64DecodeSnafu {})?,
         };
