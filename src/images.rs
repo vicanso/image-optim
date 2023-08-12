@@ -334,8 +334,12 @@ impl ImageInfo {
     }
     pub fn to_avif(&self, quality: u8, speed: u8) -> Result<Vec<u8>> {
         let mut w = Vec::new();
+        let mut sp = speed;
+        if sp == 0 {
+            sp = 3;
+        }
 
-        let img = avif::AvifEncoder::new_with_speed_quality(&mut w, speed, quality);
+        let img = avif::AvifEncoder::new_with_speed_quality(&mut w, sp, quality);
         img.write_image(
             self.buffer.as_bytes(),
             self.width as u32,
