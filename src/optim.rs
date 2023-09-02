@@ -7,7 +7,6 @@ use axum::routing::get;
 use axum::{Json, Router};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::vec;
 use urlencoding::decode;
 
 pub fn new_router() -> Router {
@@ -113,7 +112,6 @@ async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<ima
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct OptimImageParams {
     data: String,
     data_type: Option<String>,
@@ -147,7 +145,6 @@ impl OptimImageParams {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct OptimImageResult {
     diff: f64,
     data: String,

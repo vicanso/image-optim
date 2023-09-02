@@ -33,7 +33,7 @@ pub async fn access_log(
 
     let cost = Utc::now().timestamp_millis() - start_at;
     tl_info!(
-        category = "accessLog",
+        category = "access",
         ip = ip.to_string(),
         method,
         uri,

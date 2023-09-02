@@ -56,7 +56,7 @@ impl From<std::string::FromUtf8Error> for HTTPError {
     fn from(error: std::string::FromUtf8Error) -> Self {
         HTTPError {
             message: error.to_string(),
-            category: "fromUtf8".to_string(),
+            category: "from_utf8".to_string(),
             ..Default::default()
         }
     }
