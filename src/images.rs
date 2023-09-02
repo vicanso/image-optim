@@ -140,10 +140,10 @@ impl IntoResponse for ImagePreview {
             res.headers_mut().insert(header::CONTENT_TYPE, value);
         }
 
-        // 图片设置为可缓存5分钟
+        // 图片设置为缓存30天
         res.headers_mut().insert(
             header::CACHE_CONTROL,
-            HeaderValue::from_static("public, max-age=300"),
+            HeaderValue::from_static("public, max-age=2592000"),
         );
         if let Ok(value) = HeaderValue::from_str(&format!("{:.2}", self.diff)) {
             res.headers_mut().insert("X-Dssim-Diff", value);
