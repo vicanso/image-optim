@@ -1057,7 +1057,7 @@ dependencies = [
 
 [[package]]
 name = "image-optim"
-version = "0.2.5"
+version = "0.2.10"
 dependencies = [
  "async-trait",
  "avif-decode",
