@@ -15,7 +15,10 @@ use snafu::{ensure, ResultExt, Snafu};
 use std::ops::Sub;
 use std::time::Duration;
 use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
-use urlencoding::decode;
+use substring::Substring;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use urlencoding::decode; // for write_all()
 
 fn get_default_quality() -> u8 {
     static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
@@ -106,6 +109,8 @@ pub enum ImageProcessingError {
     ParseInt { source: std::num::ParseIntError },
     #[snafu(display("{source}"))]
     FromUtf { source: std::string::FromUtf8Error },
+    #[snafu(display("{source}"))]
+    Io { source: std::io::Error },
 }
 type Result<T, E = ImageProcessingError> = std::result::Result<T, E>;
 
@@ -353,29 +358,40 @@ impl LoaderProcess {
     async fn fetch_data(&self) -> Result<ProcessImage> {
         let data = self.data.clone();
         let mut ext = self.ext.clone();
-        let original_data = match data.starts_with("http") {
-            true => {
-                let resp = reqwest::Client::builder()
-                    .build()
-                    .context(ReqwestSnafu {})?
-                    .get(data)
-                    .timeout(Duration::from_secs(5 * 60))
-                    .send()
-                    .await
-                    .context(ReqwestSnafu {})?;
+        let from_http = data.starts_with("http");
+        let file_prefix = "file://";
+        let from_file = data.starts_with(file_prefix);
+        let original_data = if from_http {
+            let resp = reqwest::Client::builder()
+                .build()
+                .context(ReqwestSnafu {})?
+                .get(data)
+                .timeout(Duration::from_secs(5 * 60))
+                .send()
+                .await
+                .context(ReqwestSnafu {})?;
 
-                if let Some(content_type) = resp.headers().get("Content-Type") {
-                    let str = content_type.to_str().context(HTTPHeaderToStrSnafu {})?;
-                    let arr: Vec<_> = str.split('/').collect();
-                    if arr.len() == 2 {
-                        ext = arr[1].to_string();
-                    }
+            if let Some(content_type) = resp.headers().get("Content-Type") {
+                let str = content_type.to_str().context(HTTPHeaderToStrSnafu {})?;
+                let arr: Vec<_> = str.split('/').collect();
+                if arr.len() == 2 {
+                    ext = arr[1].to_string();
                 }
-                resp.bytes().await.context(ReqwestSnafu {})?.into()
             }
-            _ => general_purpose::STANDARD
+            resp.bytes().await.context(ReqwestSnafu {})?.into()
+        } else if from_file {
+            let mut file = File::open(data.substring(file_prefix.len(), data.len()))
+                .await
+                .context(IoSnafu)?;
+            ext = data.split('.').last().unwrap_or_default().to_string();
+
+            let mut contents = vec![];
+            file.read_to_end(&mut contents).await.context(IoSnafu)?;
+            contents
+        } else {
+            general_purpose::STANDARD
                 .decode(data.as_bytes())
-                .context(Base64DecodeSnafu {})?,
+                .context(Base64DecodeSnafu {})?
         };
         let c = Cursor::new(original_data.clone());
         let format = ImageFormat::from_extension(OsStr::new(ext.clone().as_str()));

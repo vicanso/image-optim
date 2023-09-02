@@ -2,10 +2,12 @@ use crate::error::HTTPError;
 use crate::image_processing::{run, PROCESS_LOAD, PROCESS_OPTIM};
 use crate::images;
 use crate::response::ResponseResult;
-use axum::extract::{Query, RawQuery};
+use axum::extract::{Path, Query, RawQuery};
 use axum::routing::get;
 use axum::{Json, Router};
 use base64::{engine::general_purpose, Engine as _};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use urlencoding::decode;
 
@@ -16,8 +18,51 @@ pub fn new_router() -> Router {
         .route("/preview", get(pipeline_image_preview));
 
     Router::new()
+        .route("/images/*path", get(handle_image))
         .nest("/optim-images", optim_images)
         .nest("/pipeline-images", pipe_line)
+}
+static OPTIM_PATH: Lazy<String> = Lazy::new(|| {
+    std::env::var_os("OPTIM_PATH")
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
+});
+
+async fn handle_image(Path(path): Path<String>) -> ResponseResult<images::ImagePreview> {
+    let re = Regex::new(
+        r"(?x)
+    (?P<file>[\s\S]+*)  # the file 
+    _
+    (?P<quality>\d{2}) # the quality
+    \.
+    (?P<ext>\S+)   # the day
+    ",
+    )
+    .map_err(|e| HTTPError::new(&e.to_string(), "regexp"))?;
+
+    let caps = re
+        .captures(&path)
+        .ok_or_else(|| HTTPError::new("image path is invalid", "regexp"))?;
+
+    let prefix = OPTIM_PATH.to_string();
+
+    let file = format!("file://{prefix}/{}", &caps["file"]);
+    let quality: u8 = caps["quality"].to_string().parse().unwrap_or_default();
+    let params = OptimImageParams {
+        data: file,
+        output_type: Some(caps["ext"].to_string()),
+        quality: Some(quality),
+        ..Default::default()
+    };
+    let result = handle(params).await?;
+
+    Ok(images::ImagePreview {
+        ratio: result.ratio,
+        diff: result.diff,
+        data: result.data,
+        image_type: result.output_type,
+    })
 }
 
 async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
@@ -111,7 +156,7 @@ async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<ima
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct OptimImageParams {
     data: String,
     data_type: Option<String>,
