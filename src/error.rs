@@ -1,3 +1,4 @@
+use axum::extract::multipart;
 use axum::http::{header, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::{BoxError, Json};
@@ -57,6 +58,15 @@ impl From<std::string::FromUtf8Error> for HTTPError {
         HTTPError {
             message: error.to_string(),
             category: "from_utf8".to_string(),
+            ..Default::default()
+        }
+    }
+}
+impl From<multipart::MultipartError> for HTTPError {
+    fn from(error: multipart::MultipartError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "multipart".to_string(),
             ..Default::default()
         }
     }

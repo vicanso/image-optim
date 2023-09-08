@@ -1,9 +1,10 @@
-use crate::error::HTTPError;
+use crate::error::{HTTPError, HTTPResult};
 use crate::image_processing::{run, PROCESS_LOAD, PROCESS_OPTIM};
 use crate::images;
 use crate::response::ResponseResult;
-use axum::extract::{Path, Query, RawQuery};
-use axum::routing::get;
+use axum::body::Bytes;
+use axum::extract::{Multipart, Path, Query, RawQuery};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::{engine::general_purpose, Engine as _};
 use once_cell::sync::Lazy;
@@ -19,6 +20,7 @@ pub fn new_router() -> Router {
 
     Router::new()
         .route("/images/*path", get(handle_image))
+        .route("/upload", post(handle_upload))
         .nest("/optim-images", optim_images)
         .nest("/pipeline-images", pipe_line)
 }
@@ -28,6 +30,64 @@ static OPTIM_PATH: Lazy<String> = Lazy::new(|| {
         .to_string_lossy()
         .to_string()
 });
+
+#[derive(Serialize)]
+struct OptimImageResult {
+    diff: f64,
+    data: String,
+    output_type: String,
+    ratio: usize,
+}
+
+struct OptimResult {
+    diff: f64,
+    data: Vec<u8>,
+    output_type: String,
+    ratio: usize,
+}
+
+
+#[derive(Serialize)]
+struct UploadResult {
+    pub optims: Vec<OptimImageResult>,
+}
+
+async fn handle_upload(mut multipart: Multipart) -> ResponseResult<Json<UploadResult>> {
+    let mut filename = "".to_string();
+    let mut data = Bytes::new();
+    while let Some(field) = multipart.next_field().await? {
+        if field.name().unwrap_or_default() != "file" {
+            continue;
+        }
+        filename = field.file_name().unwrap_or_default().to_string();
+        data = field.bytes().await?;
+    }
+    if data.is_empty() {
+        return Err(HTTPError::new("data is empty", "invalid"));
+    }
+    let ext = filename.split('.').last().unwrap_or_default();
+    let data = general_purpose::STANDARD.encode(data);
+    let mut optims = vec![];
+    for item in ["avif".to_string(), "webp".to_string(), ext.to_string()] {
+        // TODO 后续调整复用
+        let params = OptimImageParams {
+            data: data.clone(),
+            data_type: Some(ext.to_string()),
+            output_type: Some(item),
+            quality: Some(90),
+            ..Default::default()
+        };
+        let result = handle(params).await?;
+        optims.push(OptimImageResult {
+            diff: result.diff,
+            ratio: result.ratio,
+            data: general_purpose::STANDARD.encode(result.data),
+            output_type: result.output_type,
+        });
+    }
+
+    Ok(Json(UploadResult { optims }))
+}
 
 async fn handle_image(Path(path): Path<String>) -> ResponseResult<images::ImagePreview> {
     let re = Regex::new(
@@ -65,12 +125,12 @@ async fn handle_image(Path(path): Path<String>) -> ResponseResult<images::ImageP
     })
 }
 
-async fn handle(params: OptimImageParams) -> Result<OptimResult, HTTPError> {
+async fn handle(params: OptimImageParams) -> HTTPResult<OptimResult> {
     let desc = params.description();
     pipeline(desc).await
 }
 
-async fn pipeline(desc: Vec<Vec<String>>) -> Result<OptimResult, HTTPError> {
+async fn pipeline(desc: Vec<Vec<String>>) -> HTTPResult<OptimResult> {
     let process_img = run(desc).await?;
 
     let data = process_img.get_buffer()?;
@@ -189,17 +249,3 @@ impl OptimImageParams {
     }
 }
 
-#[derive(Serialize)]
-struct OptimImageResult {
-    diff: f64,
-    data: String,
-    output_type: String,
-    ratio: usize,
-}
-
-struct OptimResult {
-    diff: f64,
-    data: Vec<u8>,
-    output_type: String,
-    ratio: usize,
-}

@@ -15,10 +15,15 @@
 
 响应头中的`X-Dssim-Diff`为压缩后的图片与原图片的差异值(人眼感知，数值*1000)，`X-Ratio`为压缩后的数据与原图片的百分比.
 
+## 指定图片目录
+
+通过`OPTIM_PATH`指定图片目录，`/images/*path`针对此目录中的文件提供图片转换压缩处理。如图片目录下有文件`/asset/original.png`，现希望转换为质量为90的avif，则请求的地址为`/images/asset/original.png_90.avif`
+
 ## ENV
 
 默认压缩质量与压缩速度可以通过env指定，具体如下：
 
+- `OPTIM_PATH`: 指定图片处理的目录
 - `OPTIM_QUALITY`: 默认压缩质量，如果不指定则为90
 - `OPTIM_SPEED`: 默认压缩速度，如果不指定则为3，用于avif压缩(avif压缩较慢，速度选择越高压缩率越低)
 - `OPTIM_ALIAS_XXX`: 支持设置参数替换，例如`OPTIM_ALIAS_ABC=http://test.com`表示将参数中的ABC替换为 `http://test.com` ，用于简化图片处理的参数配置
