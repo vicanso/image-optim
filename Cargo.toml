@@ -1,6 +1,6 @@
 [package]
 name = "image-optim"
-version = "0.2.11"
+version = "0.2.12"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,7 +10,7 @@ async-trait = "0.1.73"
 avif-decode = "0.2.2"
 axum = { version = "0.6.20", features = ["multipart"] }
 axum-client-ip = "0.4.2"
-base64 = "0.21.3"
+base64 = "0.21.4"
 chrono = "0.4.30"
 dssim = "3.2.4"
 http = "0.2.9"
