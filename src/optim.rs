@@ -46,7 +46,6 @@ struct OptimResult {
     ratio: usize,
 }
 
-
 #[derive(Serialize)]
 struct UploadResult {
     pub optims: Vec<OptimImageResult>,
@@ -248,4 +247,3 @@ impl OptimImageParams {
         arr
     }
 }
-

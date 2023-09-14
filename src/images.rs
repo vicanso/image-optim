@@ -8,7 +8,7 @@ use image::codecs::webp;
 use image::{AnimationDecoder, DynamicImage, ImageEncoder, ImageFormat, RgbaImage};
 use lodepng::Bitmap;
 use rgb::{ComponentBytes, RGB8, RGBA8};
-use snafu::{ensure, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use std::{
     ffi::OsStr,
     io::{BufRead, Read, Seek},
@@ -38,6 +38,8 @@ pub enum ImageError {
     },
     #[snafu(display("Handle image fail, category:mozjpeg, message:unknown"))]
     Mozjpeg {},
+    #[snafu(display("Io fail, {source}"))]
+    Io { source: std::io::Error },
     #[snafu(display("Handle image fail"))]
     Unknown,
 }
@@ -69,6 +71,10 @@ impl ImageError {
             ImageError::Unknown {} => ImageErrorDetail {
                 category: "unknown".to_string(),
                 message: self.to_string(),
+            },
+            ImageError::Io { source } => ImageErrorDetail {
+                message: source.to_string(),
+                category: "io".to_string(),
             },
             ImageError::Mozjpeg {} => ImageErrorDetail {
                 category: "mozjpeg".to_string(),
@@ -355,16 +361,11 @@ impl ImageInfo {
     pub fn to_mozjpeg(&self, quality: u8) -> Result<Vec<u8>> {
         let mut comp = mozjpeg::Compress::new(mozjpeg::ColorSpace::JCS_RGB);
         comp.set_size(self.width, self.height);
-        comp.set_mem_dest();
         comp.set_quality(quality as f32);
-        comp.start_compress();
-        comp.write_scanlines(self.get_rgb8().as_bytes());
-        comp.finish_compress();
-
-        let result = comp.data_to_vec();
-        // 如果处理失败，则出错
-        ensure!(result.is_ok(), MozjpegSnafu {});
-
-        Ok(result.unwrap())
+        let mut comp = comp.start_compress(Vec::new()).context(IoSnafu {})?;
+        comp.write_scanlines(self.get_rgb8().as_bytes())
+            .context(IoSnafu {})?;
+        let data = comp.finish().context(IoSnafu {})?;
+        Ok(data)
     }
 }
