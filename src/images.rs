@@ -1,5 +1,5 @@
 use avif_decode::Decoder;
-use axum::body::Full;
+use axum::body::Body;
 use axum::http::{header, HeaderValue};
 use axum::response::{IntoResponse, Response};
 use image::codecs::avif;
@@ -138,7 +138,7 @@ pub struct ImagePreview {
 // 图片预览转换为response
 impl IntoResponse for ImagePreview {
     fn into_response(self) -> Response {
-        let mut res = Full::from(self.data).into_response();
+        let mut res = Body::from(self.data).into_response();
 
         // 设置content type
         let result = mime_guess::from_ext(self.image_type.as_str()).first_or(mime::IMAGE_JPEG);

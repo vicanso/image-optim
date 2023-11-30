@@ -98,7 +98,7 @@ pub enum ImageProcessingError {
     #[snafu(display("{source}"))]
     Reqwest { source: reqwest::Error },
     #[snafu(display("{source}"))]
-    HTTPHeaderToStr { source: http::header::ToStrError },
+    HTTPHeaderToStr { source: reqwest::header::ToStrError },
     #[snafu(display("{source}"))]
     Base64Decode { source: base64::DecodeError },
     #[snafu(display("{source}"))]
