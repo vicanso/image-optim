@@ -18,12 +18,12 @@ use std::{env, ffi::OsStr, io::Cursor, num::NonZeroUsize, sync::Mutex, vec};
 use substring::Substring;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use urlencoding::decode; // for write_all()
+use urlencoding::decode;
 
 fn get_default_quality() -> u8 {
     static OPTIM_QUALITY: OnceCell<u8> = OnceCell::new();
     let result = OPTIM_QUALITY.get_or_init(|| -> u8 {
-        let quality = env::var("OPTIM_QUALITY").unwrap_or_else(|_| "90".to_string());
+        let quality = env::var("OPTIM_QUALITY").unwrap_or_default();
         quality.parse::<u8>().unwrap_or(90)
     });
     result.to_owned()
@@ -32,8 +32,8 @@ fn get_default_quality() -> u8 {
 fn get_default_speed() -> u8 {
     static OPTIM_SPEED: OnceCell<u8> = OnceCell::new();
     let result = OPTIM_SPEED.get_or_init(|| -> u8 {
-        let speed = env::var("OPTIM_SPEED").unwrap_or_else(|_| "3".to_string());
-        speed.parse::<u8>().unwrap_or(3)
+        let speed = env::var("OPTIM_SPEED").unwrap_or_default();
+        speed.parse::<u8>().unwrap_or(5)
     });
     result.to_owned()
 }
@@ -41,7 +41,7 @@ fn get_default_speed() -> u8 {
 fn is_disable_dssim() -> bool {
     static OPTIM_DISABLE_DSSIM: OnceCell<bool> = OnceCell::new();
     let result = OPTIM_DISABLE_DSSIM.get_or_init(|| -> bool {
-        let disable = env::var("OPTIM_DISABLE_DSSIM").unwrap_or_else(|_| "".to_string());
+        let disable = env::var("OPTIM_DISABLE_DSSIM").unwrap_or_default();
         disable == "1"
     });
     result.to_owned()
