@@ -7,7 +7,6 @@ use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 mod error;
-mod image_processing;
 mod images;
 mod middleware;
 mod optim;

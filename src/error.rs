@@ -72,6 +72,25 @@ impl From<multipart::MultipartError> for HTTPError {
     }
 }
 
+impl From<imageoptimize::ImageError> for HTTPError {
+    fn from(error: imageoptimize::ImageError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "image".to_string(),
+            ..Default::default()
+        }
+    }
+}
+impl From<imageoptimize::ImageProcessingError> for HTTPError {
+    fn from(error: imageoptimize::ImageProcessingError) -> Self {
+        HTTPError {
+            message: error.to_string(),
+            category: "image_process".to_string(),
+            ..Default::default()
+        }
+    }
+}
+
 pub async fn handle_error(
     // `Method` and `Uri` are extractors so they can be used here
     method: Method,

@@ -1,5 +1,4 @@
 use crate::error::{HTTPError, HTTPResult};
-use crate::image_processing::{run, PROCESS_LOAD, PROCESS_OPTIM};
 use crate::images;
 use crate::response::ResponseResult;
 use axum::body::Bytes;
@@ -130,7 +129,7 @@ async fn handle(params: OptimImageParams) -> HTTPResult<OptimResult> {
 }
 
 async fn pipeline(desc: Vec<Vec<String>>) -> HTTPResult<OptimResult> {
-    let process_img = run(desc).await?;
+    let process_img = imageoptimize::run(desc).await?;
 
     let data = process_img.get_buffer()?;
     let mut ratio = 0;
@@ -227,7 +226,7 @@ impl OptimImageParams {
     // to processing description string
     pub fn description(self) -> Vec<Vec<String>> {
         let load_process = vec![
-            PROCESS_LOAD.to_string(),
+            imageoptimize::PROCESS_LOAD.to_string(),
             self.data,
             self.data_type.unwrap_or_default(),
         ];
@@ -236,7 +235,7 @@ impl OptimImageParams {
         let speed = self.speed.unwrap_or(3);
 
         let optim_process = vec![
-            PROCESS_OPTIM.to_string(),
+            imageoptimize::PROCESS_OPTIM.to_string(),
             self.output_type.unwrap_or_default(),
             quality.to_string(),
             speed.to_string(),
