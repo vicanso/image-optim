@@ -1,40 +1,6 @@
 use axum::body::Body;
 use axum::http::{header, HeaderValue};
 use axum::response::{IntoResponse, Response};
-use image::RgbaImage;
-use rgb::RGBA8;
-
-pub struct ImageInfo {
-    // rgba像素
-    pub buffer: Vec<RGBA8>,
-    /// Width in pixels
-    pub width: usize,
-    /// Height in pixels
-    pub height: usize,
-}
-
-impl From<RgbaImage> for ImageInfo {
-    fn from(img: RgbaImage) -> Self {
-        let width = img.width() as usize;
-        let height = img.height() as usize;
-        let mut buffer = Vec::with_capacity(width * height);
-
-        for ele in img.chunks(4) {
-            buffer.push(RGBA8 {
-                r: ele[0],
-                g: ele[1],
-                b: ele[2],
-                a: ele[3],
-            })
-        }
-
-        ImageInfo {
-            buffer,
-            width,
-            height,
-        }
-    }
-}
 
 pub struct ImagePreview {
     pub diff: f64,

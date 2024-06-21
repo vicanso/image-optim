@@ -28,3 +28,16 @@
 - `OPTIM_SPEED`: 默认压缩速度，如果不指定则为5，用于avif压缩(avif压缩较慢，速度选择越高压缩率越低)
 - `OPTIM_ALIAS_XXX`: 支持设置参数替换，例如`OPTIM_ALIAS_ABC=http://test.com`表示将参数中的ABC替换为 `http://test.com` ，用于简化图片处理的参数配置
 - `OPTIM_DISABLE_DSSIM`: 是否禁用dssim图片对比，如果不需要比对则可禁用(设置为1)
+
+### 压缩图片
+
+- `data`: 可以为http的请求地址或者base64的图片数据
+- `data_type`: 若为base64的数据则需指定格式类型，可选
+- `output_type`: 图片转换后的格式类型，可选，不指定则不改变
+- `quality`: 图片压缩质量
+- `speed`: 指定avif的转换速度，设置越高压缩效果越差
+
+
+```bash
+curl -v -XPOST -d '{"data":"https://img2.baidu.com/it/u=3012806272,1276873993&fm=253&fmt=auto&app=138&f=JPEG","output_type":"jpeg","quality":70,"speed":3}' -H 'Content-Type: application/json' 'http://127.0.0.1:3000/optim-images'
+```
