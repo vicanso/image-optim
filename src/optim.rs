@@ -90,7 +90,7 @@ async fn handle_upload(mut multipart: Multipart) -> ResponseResult<Json<UploadRe
 async fn handle_image(Path(path): Path<String>) -> ResponseResult<images::ImagePreview> {
     let re = Regex::new(
         r"(?x)
-    (?P<file>[\s\S]+*)  # the file 
+    (?P<file>[\s\S]+*)  # the file
     _
     (?P<quality>\d{2}) # the quality
     \.
@@ -214,13 +214,14 @@ async fn pipeline_image_preview(RawQuery(query): RawQuery) -> ResponseResult<ima
     })
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Debug)]
 struct OptimImageParams {
     data: String,
     data_type: Option<String>,
     output_type: Option<String>,
     quality: Option<u8>,
     speed: Option<u8>,
+    diff: Option<bool>,
 }
 impl OptimImageParams {
     // to processing description string
@@ -241,7 +242,10 @@ impl OptimImageParams {
             speed.to_string(),
         ];
 
-        let arr = vec![load_process, optim_process];
+        let mut arr = vec![load_process, optim_process];
+        if self.diff.unwrap_or_default() {
+            arr.push(vec![imageoptimize::PROCESS_DIFF.to_string()]);
+        }
 
         arr
     }
