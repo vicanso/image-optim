@@ -10,6 +10,6 @@ lint:
 fmt:
 	cargo fmt --all --
 dev:
-	cargo watch -w src -x 'run'
+	bacon run
 dev-debug:
 	LOG_LEVEL=5 cargo run
