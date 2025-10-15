@@ -1891,6 +1891,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-extra",
+ "base64 0.22.1",
  "ctor",
  "imageoptimize",
  "mime",
@@ -1930,9 +1931,9 @@ dependencies = [
 
 [[package]]
 name = "imageoptimize"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fb24299e71989720ad25137137bb700f6504240344f83608b5f52520eb4ef98"
+checksum = "4423c8437f73e21fed018a65efc76fcdec251856c292263e172f6d38177a4b5d"
 dependencies = [
  "async-trait",
  "avif-decode",

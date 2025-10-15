@@ -16,7 +16,6 @@ COPY --from=builder /image-optim/target/release/image-optim /usr/local/bin/image
 COPY --from=builder /image-optim/entrypoint.sh /entrypoint.sh
 
 ENV RUST_ENV=production
-ENV OPTIM_PATH=/optim-images
 
 USER ubuntu
 

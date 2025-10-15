@@ -13,3 +13,6 @@ dev:
 	bacon run
 dev-debug:
 	LOG_LEVEL=5 cargo run
+
+release:
+	cargo build --release 

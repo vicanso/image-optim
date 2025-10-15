@@ -46,8 +46,6 @@ pub struct BasicConfig {
     pub processing_limit: i32,
     // timeout
     pub timeout: Duration,
-    // secret
-    pub secret: String,
     // prefix
     pub prefix: String,
     // commit id
@@ -71,7 +69,6 @@ fn new_basic_config(config: &Config) -> Result<BasicConfig> {
         listen: config.get_str("listen", ""),
         processing_limit: config.get_int("processing_limit", 5000) as i32,
         timeout,
-        secret: config.get_str("secret", ""),
         prefix: config.get_str("prefix", ""),
         commit_id,
     };
@@ -91,10 +88,8 @@ fn new_config() -> Result<&'static Config> {
             arr.push(std::str::from_utf8(&data).unwrap_or_default().to_string());
         }
 
-        let config = tibba_config::Config::new(
-            arr.iter().map(|s| s.as_str()).collect(),
-            Some("IMAGE_OPTIM"),
-        )?;
+        let config =
+            tibba_config::Config::new(arr.iter().map(|s| s.as_str()).collect(), Some("IMOP"))?;
         Ok(config)
     })
 }
@@ -103,7 +98,7 @@ pub fn must_get_basic_config() -> &'static BasicConfig {
     BASIC_CONFIG.get().unwrap()
 }
 
-async fn init_config() -> Result<()> {
+fn init_config() -> Result<()> {
     let app_config = new_config()?;
     let basic_config = new_basic_config(&app_config.sub_config("basic"))?;
     BASIC_CONFIG
@@ -121,7 +116,7 @@ struct ConfigTask;
 #[async_trait]
 impl Task for ConfigTask {
     async fn before(&self) -> Result<bool> {
-        init_config().await?;
+        init_config()?;
         Ok(true)
     }
 }

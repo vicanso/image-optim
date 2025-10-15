@@ -2,9 +2,12 @@
 [basic]
 # timeout for http request
 timeout = 60
-listen = "127.0.0.1:5000"
+listen = "127.0.0.1:3000"
 processing_limit = 1_000
-secret = "osbhdlycJ0"
 
 [opendal]
 url = "file://~/Downloads"
+
+[optim]
+quality = 80
+speed = 3

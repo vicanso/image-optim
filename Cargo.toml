@@ -8,8 +8,9 @@ edition = "2024"
 async-trait = "0.1.89"
 axum = { version = "0.8.6", features = ["multipart"] }
 axum-extra = { version = "0.10.3", features = ["cookie", "cookie-signed"] }
+base64 = "0.22.1"
 ctor = "0.6.0"
-imageoptimize = "0.3.0"
+imageoptimize = "0.4.0"
 mime = "0.3.17"
 mime_guess = "2.0.5"
 num_cpus = "1.17.0"

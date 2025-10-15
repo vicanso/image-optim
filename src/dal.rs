@@ -48,12 +48,6 @@ impl Task for DalTask {
             full_capability = ?info.full_capability(),
             "open dal storage init success"
         );
-
-        // println!(
-        //     "stat: {:?}",
-        //     get_opendal_storage().stat("content.pdf").await.unwrap()
-        // );
-
         Ok(true)
     }
     fn priority(&self) -> u8 {
