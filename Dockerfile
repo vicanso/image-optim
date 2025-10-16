@@ -1,4 +1,4 @@
-FROM rust as builder
+FROM rust:1.90 as builder
 
 COPY . /image-optim
 

@@ -1931,9 +1931,9 @@ dependencies = [
 
 [[package]]
 name = "imageoptimize"
-version = "0.3.2"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4423c8437f73e21fed018a65efc76fcdec251856c292263e172f6d38177a4b5d"
+checksum = "2fbd613d0ee58f25e74f911033c6ddd6b62a64f42fe66e581856c5b47be697e9"
 dependencies = [
  "async-trait",
  "avif-decode",

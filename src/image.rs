@@ -53,20 +53,23 @@ fn get_default_optim_params() -> (u8, u8) {
 }
 
 #[derive(Default)]
-pub struct ImagePreview {
-    pub diff: f64,
-    pub ratio: usize,
-    pub data: Vec<u8>,
-    pub image_type: String,
-}
+struct ImagePreview(ProcessImage);
 
 // 图片预览转换为response
 impl IntoResponse for ImagePreview {
     fn into_response(self) -> Response {
-        let mut res = Body::from(self.data).into_response();
+        let img = self.0;
+        let buffer = match img.get_buffer() {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                return map_err(e).into_response();
+            }
+        };
+        let ratio = 100 * buffer.len() / img.original_size;
+        let mut res = Body::from(buffer).into_response();
 
         // 设置content type
-        let result = mime_guess::from_ext(self.image_type.as_str()).first_or(mime::IMAGE_JPEG);
+        let result = mime_guess::from_ext(&img.ext).first_or(mime::IMAGE_JPEG);
         if let Ok(value) = HeaderValue::from_str(result.as_ref()) {
             res.headers_mut().insert(header::CONTENT_TYPE, value);
         }
@@ -76,10 +79,12 @@ impl IntoResponse for ImagePreview {
             header::CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=2592000"),
         );
-        if let Ok(value) = HeaderValue::from_str(&format!("{:.2}", self.diff)) {
+        if img.diff >= 0.0f64
+            && let Ok(value) = HeaderValue::from_str(&format!("{:.2}", img.diff))
+        {
             res.headers_mut().insert("X-Dssim-Diff", value);
         }
-        if let Ok(value) = HeaderValue::from_str(self.ratio.to_string().as_str()) {
+        if let Ok(value) = HeaderValue::from_str(ratio.to_string().as_str()) {
             res.headers_mut().insert("X-Ratio", value);
         }
 
@@ -109,8 +114,7 @@ fn map_err(err: imageoptimize::ImageProcessingError) -> Error {
 async fn load_image(file: &str) -> Result<ProcessImage> {
     let ext = file.split('.').next_back().unwrap_or("jpeg");
     let buffer = get_opendal_storage().read(file).await?;
-    let img = ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)?;
-    Ok(img)
+    ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)
 }
 
 async fn optim(QueryParams(params): QueryParams<OptimParams>) -> Result<ImagePreview> {
@@ -127,15 +131,8 @@ async fn optim(QueryParams(params): QueryParams<OptimParams>) -> Result<ImagePre
     )
     .await
     .map_err(map_err)?;
-    let buffer = img.get_buffer().map_err(map_err)?;
-    let ratio = 100 * buffer.len() / img.original_size;
 
-    Ok(ImagePreview {
-        diff: img.diff,
-        ratio,
-        data: buffer,
-        image_type: img.ext,
-    })
+    Ok(ImagePreview(img))
 }
 
 #[derive(Debug, Deserialize, Clone, Validate)]
@@ -153,7 +150,7 @@ async fn resize(QueryParams(params): QueryParams<ResizeParams>) -> Result<ImageP
     let (default_qualtiy, default_speed) = get_default_optim_params();
     let mut img = load_image(&params.file).await?;
     if params.width == 0 && params.height == 0 {
-        return Err(Error::new("width and height cannot be 0").with_category("validate"));
+        return Err(Error::new("width and height can not be 0").with_category("validate"));
     }
     let quality = params.quality.unwrap_or(default_qualtiy);
     let (w, h) = img.get_size();
@@ -179,11 +176,7 @@ async fn resize(QueryParams(params): QueryParams<ResizeParams>) -> Result<ImageP
     .await
     .map_err(map_err)?;
 
-    Ok(ImagePreview {
-        data: img.get_buffer().map_err(map_err)?,
-        image_type: img.ext,
-        ..Default::default()
-    })
+    Ok(ImagePreview(img))
 }
 
 #[derive(Debug, Deserialize, Clone, Validate)]
@@ -221,11 +214,7 @@ async fn watermark(QueryParams(params): QueryParams<WatermarkParams>) -> Result<
     .await
     .map_err(map_err)?;
 
-    Ok(ImagePreview {
-        data: img.get_buffer().map_err(map_err)?,
-        image_type: img.ext,
-        ..Default::default()
-    })
+    Ok(ImagePreview(img))
 }
 
 #[derive(Debug, Deserialize, Clone, Validate)]
@@ -255,11 +244,7 @@ async fn crop(QueryParams(params): QueryParams<CropParams>) -> Result<ImagePrevi
     )
     .await
     .map_err(map_err)?;
-    Ok(ImagePreview {
-        data: img.get_buffer().map_err(map_err)?,
-        image_type: img.ext,
-        ..Default::default()
-    })
+    Ok(ImagePreview(img))
 }
 
 pub fn new_image_router() -> Router {

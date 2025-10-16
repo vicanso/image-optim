@@ -21,6 +21,7 @@ use std::time::Duration;
 use tibba_config::Config;
 use tibba_error::Error;
 use tibba_hook::{Task, register_task};
+use tibba_util::get_env;
 use tracing::info;
 use validator::Validate;
 
@@ -80,7 +81,7 @@ fn new_config() -> Result<&'static Config> {
     CONFIGS.get_or_try_init(|| {
         let category = "config";
         let mut arr = vec![];
-        for name in ["default.toml", &format!("{}.toml", tibba_util::get_env())] {
+        for name in ["default.toml", &format!("{}.toml", get_env())] {
             let data = Configs::get(name)
                 .ok_or(map_error(format!("{name} not found")))?
                 .data;
@@ -88,8 +89,7 @@ fn new_config() -> Result<&'static Config> {
             arr.push(std::str::from_utf8(&data).unwrap_or_default().to_string());
         }
 
-        let config =
-            tibba_config::Config::new(arr.iter().map(|s| s.as_str()).collect(), Some("IMOP"))?;
+        let config = Config::new(arr.iter().map(|s| s.as_str()).collect(), Some("IMOP"))?;
         Ok(config)
     })
 }

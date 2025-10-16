@@ -20,7 +20,7 @@
 
 **Query 参数**:
 - `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`jpg`、`png`、`webp`、`avif`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`，默认保持原格式
 - `quality` (可选): 图片压缩质量，范围 0-100，默认值为配置中的 `optim.quality`（默认 80）
 
 **返回头部**:
@@ -61,7 +61,7 @@ curl "http://127.0.0.1:3000/images/optim?file=images/photo.png"
 **示例**:
 ```bash
 # 缩放图片宽度为 800px，高度等比例调整
-curl "http://127.0.0.1:3000/images/resize?file=images/photo.jpg&width=800&height=0"
+curl "http://127.0.0.1:3000/images/resize?file=images/photo.jpg&width=800"
 
 # 缩放图片到指定尺寸 1024x768
 curl "http://127.0.0.1:3000/images/resize?file=images/photo.jpg&width=1024&height=768&quality=85"
@@ -100,7 +100,7 @@ curl "http://127.0.0.1:3000/images/watermark?file=images/photo.jpg&watermark=wat
 
 ### 4. 图片裁剪 (`/images/crop`)
 
-按指定区域裁剪存储中的图片。
+按指定区域裁剪图片。
 
 **请求方式**: `GET /images/crop`
 
