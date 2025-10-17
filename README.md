@@ -8,6 +8,17 @@
 - `IMOP_OPTIM_QUALITY`: 图片压缩质量，默认 80
 - `IMOP_OPTIM_SPEED`: 图片压缩速度，默认 3
 
+```bash
+docker run -d \
+  --name image-optim \
+  -p 3000:3000 \
+  -v ~/Downloads:/opt/images \
+  -e IMOP_OPENDAL_URL=file:///opt/images \
+  -e IMOP_OPTIM_QUALITY=80 \
+  -e IMOP_OPTIM_SPEED=3 \
+  vicanso/image-optim
+```
+
 ## API 接口说明
 
 基于存储的图片处理服务提供了以下 REST API 接口，所有接口通过 GET 请求并使用 Query 参数传递。
