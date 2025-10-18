@@ -4255,9 +4255,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-config"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90b548eb70f3ecd36b81475bd1f0497663f5b948d77aba719d473d6e125d2a19"
+checksum = "73905d9b520252cffab76e19e5a6ff79a0d52c532b14c7597317a51ea48b67f9"
 dependencies = [
  "bytesize",
  "config",

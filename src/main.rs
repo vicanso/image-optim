@@ -133,7 +133,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     state.run();
 
-    info!("listening on http://{}/", basic_config.listen);
+    info!(config = ?basic_config, "server is listening");
     let listener = tokio::net::TcpListener::bind(basic_config.listen.clone())
         .await
         .unwrap();

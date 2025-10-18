@@ -72,7 +72,7 @@ impl IntoResponse for ImagePreview {
                 return map_err(e).into_response();
             }
         };
-        let ratio = 100 * buffer.len() / img.original_size;
+        let ratio = (100 * buffer.len() / img.original_size).max(1);
         let mut res = Body::from(buffer).into_response();
 
         // 设置content type
