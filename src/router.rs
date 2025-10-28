@@ -25,7 +25,6 @@ pub fn new_router() -> Result<Router> {
     let basic_config = must_get_basic_config();
     let common_router = new_common_router(CommonRouterParams {
         state: get_app_state(),
-        secret: "".to_string(),
         cache: None,
         commit_id: basic_config.commit_id.clone(),
     });

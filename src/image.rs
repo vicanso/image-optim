@@ -33,8 +33,19 @@ use validator::{Validate, ValidationError};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
+fn default_qualtiy() -> u8 {
+    80
+}
+
+fn default_speed() -> u8 {
+    3
+}
+
+#[derive(Deserialize)]
 struct OptimConfig {
+    #[serde(default = "default_qualtiy")]
     quality: u8,
+    #[serde(default = "default_speed")]
     speed: u8,
 }
 
@@ -43,11 +54,14 @@ static OPTIM_CONFIG: OnceCell<OptimConfig> = OnceCell::new();
 fn get_default_optim_params() -> (u8, u8) {
     let config = OPTIM_CONFIG.get_or_init(|| {
         let app_config = must_get_config();
-        let config = app_config.sub_config("optim");
-        OptimConfig {
-            quality: config.get_int("quality", 80) as u8,
-            speed: config.get_int("speed", 3) as u8,
-        }
+        let config = app_config
+            .sub_config("optim")
+            .try_deserialize::<OptimConfig>()
+            .unwrap_or(OptimConfig {
+                quality: 80,
+                speed: 3,
+            });
+        config
     });
     (config.quality, config.speed)
 }

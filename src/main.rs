@@ -110,10 +110,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // config is validated in init function
     let basic_config = must_get_basic_config();
-    let app = if basic_config.prefix.is_empty() {
-        new_router()?
+    let app = if let Some(prefix) = &basic_config.prefix {
+        Router::new().nest(prefix, new_router()?)
     } else {
-        Router::new().nest(&basic_config.prefix, new_router()?)
+        new_router()?
     };
 
     let predicate = SizeAbove::new(1024)
