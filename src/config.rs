@@ -29,23 +29,18 @@ use validator::Validate;
 type Result<T> = std::result::Result<T, Error>;
 static CONFIGS: OnceCell<Config> = OnceCell::new();
 
+const GIT_HASH: &str = env!("VERGEN_GIT_SHA");
+
 fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("config")
 }
 
 #[derive(RustEmbed)]
-#[folder = "configs/"]
+#[folder = "configs"]
 struct Configs;
 
 fn default_commit_id() -> String {
-    if let Some(data) = Configs::get("commit_id.txt") {
-        std::str::from_utf8(&data.data)
-            .unwrap_or_default()
-            .trim()
-            .to_string()
-    } else {
-        "--".to_string()
-    }
+    GIT_HASH.to_string()
 }
 
 // BasicConfig struct defines the basic application settings
@@ -55,7 +50,7 @@ pub struct BasicConfig {
     // listen address
     pub listen: String,
     // processing limit
-    #[validate(range(min = 0, max = 100000))]
+    #[validate(range(min = 0, max = 100_000))]
     pub processing_limit: i32,
     // timeout
     #[serde(with = "humantime_serde")]
@@ -84,7 +79,7 @@ fn new_config() -> Result<&'static Config> {
             let data = Configs::get(name)
                 .ok_or(map_err(format!("{name} not found")))?
                 .data;
-            info!(category, "load config from {}", name);
+            info!(category, "load config from {name}",);
             arr.push(std::str::from_utf8(&data).unwrap_or_default().to_string());
         }
 
@@ -94,7 +89,9 @@ fn new_config() -> Result<&'static Config> {
 }
 
 pub fn must_get_basic_config() -> &'static BasicConfig {
-    BASIC_CONFIG.get().unwrap()
+    BASIC_CONFIG
+        .get()
+        .unwrap_or_else(|| panic!("basic config not initialized"))
 }
 
 fn init_config() -> Result<()> {
@@ -107,7 +104,7 @@ fn init_config() -> Result<()> {
 }
 
 pub fn must_get_config() -> &'static Config {
-    new_config().unwrap()
+    new_config().unwrap_or_else(|_| panic!("config not initialized"))
 }
 
 struct ConfigTask;

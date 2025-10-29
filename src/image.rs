@@ -54,14 +54,13 @@ static OPTIM_CONFIG: OnceCell<OptimConfig> = OnceCell::new();
 fn get_default_optim_params() -> (u8, u8) {
     let config = OPTIM_CONFIG.get_or_init(|| {
         let app_config = must_get_config();
-        let config = app_config
+        app_config
             .sub_config("optim")
             .try_deserialize::<OptimConfig>()
             .unwrap_or(OptimConfig {
                 quality: 80,
                 speed: 3,
-            });
-        config
+            })
     });
     (config.quality, config.speed)
 }
@@ -129,7 +128,7 @@ struct OptimParams {
     quality: Option<u8>,
 }
 
-fn map_err(err: imageoptimize::ImageProcessingError) -> Error {
+fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("imageoptimize")
 }
 async fn load_image(file: &str) -> Result<ProcessImage> {
@@ -156,7 +155,16 @@ async fn optim(QueryParams(params): QueryParams<OptimParams>) -> Result<ImagePre
     Ok(img.into())
 }
 
+fn validate_resize_params(params: &ResizeParams) -> Result<(), ValidationError> {
+    if params.width == 0 && params.height == 0 {
+        return Err(ValidationError::new("width_height")
+            .with_message("width and height cannot both be 0".into()));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Deserialize, Clone, Validate)]
+#[validate(schema(function = "validate_resize_params"))]
 struct ResizeParams {
     #[validate(length(min = 5))]
     file: String,
@@ -172,9 +180,6 @@ struct ResizeParams {
 async fn resize(QueryParams(params): QueryParams<ResizeParams>) -> Result<ImagePreview> {
     let (default_qualtiy, default_speed) = get_default_optim_params();
     let mut img = load_image(&params.file).await?;
-    if params.width == 0 && params.height == 0 {
-        return Err(Error::new("width and height can not be 0").with_category("validate"));
-    }
     let quality = params.quality.unwrap_or(default_qualtiy);
     let (w, h) = img.get_size();
     let width = if params.width == 0 {

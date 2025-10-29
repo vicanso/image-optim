@@ -24,7 +24,7 @@ USER ubuntu
 
 WORKDIR /home/ubuntu
 
-HEALTHCHECK --timeout=10s --interval=10s CMD [ "wget", "http://127.0.0.1:3000/ping", "-q", "-O", "-"]
+HEALTHCHECK --timeout=10s --interval=10s CMD [ "httpstat", "http://127.0.0.1:3000/ping", "-s"]
 
 CMD ["image-optim"]
 

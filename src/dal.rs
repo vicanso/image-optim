@@ -28,7 +28,9 @@ static OPENDAL_STORAGE: OnceCell<Storage> = OnceCell::new();
 
 pub fn get_opendal_storage() -> &'static Storage {
     // init opendal storage is checked in init function
-    OPENDAL_STORAGE.get().unwrap()
+    OPENDAL_STORAGE
+        .get()
+        .unwrap_or_else(|| panic!("opendal storage not initialized"))
 }
 
 struct DalTask;

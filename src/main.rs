@@ -65,7 +65,7 @@ fn init_logger() {
 
     let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339().unwrap_or_else(|_| {
         tracing_subscriber::fmt::time::OffsetTime::new(
-            time::UtcOffset::from_hms(0, 0, 0).unwrap(),
+            time::UtcOffset::from_hms(0, 0, 0).unwrap_or(time::UtcOffset::UTC),
             time::format_description::well_known::Rfc3339,
         )
     });
@@ -87,7 +87,6 @@ async fn shutdown_signal() {
 
     #[cfg(unix)]
     let terminate = async {
-        // TODO 后续有需要可在此设置ping的状态
         signal::unix::signal(signal::unix::SignalKind::terminate())
             .expect("failed to install signal handler")
             .recv()
@@ -134,16 +133,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     state.run();
 
     info!(config = ?basic_config, "server is listening");
-    let listener = tokio::net::TcpListener::bind(basic_config.listen.clone())
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(basic_config.listen.clone()).await?;
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal())
-    .await
-    .unwrap();
+    .await?;
     Ok(())
 }
 
@@ -173,6 +169,6 @@ fn main() {
         .enable_all()
         .worker_threads(cpus)
         .build()
-        .unwrap()
+        .unwrap_or_else(|e| panic!("failed to build tokio runtime: {}", e))
         .block_on(start());
 }
