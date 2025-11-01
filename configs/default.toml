@@ -11,3 +11,5 @@ url = "file://~/Downloads"
 [optim]
 quality = 80
 speed = 3
+max_age = "1440h"
+auto_output_types = ["avif", "png"]

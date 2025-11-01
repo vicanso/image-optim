@@ -16,7 +16,7 @@ docker run -d \
   -e IMOP_OPENDAL_URL=file:///opt/images \
   -e IMOP_OPTIM_QUALITY=80 \
   -e IMOP_OPTIM_SPEED=3 \
-  vicanso/image-optim
+  vicanso/image-optim:0.4.2
 ```
 
 ## API 接口说明
