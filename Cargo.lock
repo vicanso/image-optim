@@ -458,11 +458,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "801927ee168e17809ab8901d9f01f700cd7d8d6a6527997fee44e4b0327a253c"
 dependencies = [
  "ahash",
+ "async-trait",
  "cached_proc_macro",
  "cached_proc_macro_types",
+ "futures",
  "hashbrown 0.15.5",
  "once_cell",
  "thiserror 2.0.17",
+ "tokio",
  "web-time",
 ]
 
@@ -1891,6 +1894,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "base64 0.22.1",
+ "cached",
  "ctor",
  "imageoptimize",
  "mime",
@@ -4505,6 +4509,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",

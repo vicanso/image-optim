@@ -24,7 +24,9 @@ use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use imageoptimize::ProcessImage;
+use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashSet;
 use tibba_error::Error;
 use tibba_util::QueryParams;
 use validator::{Validate, ValidationError};
@@ -118,15 +120,48 @@ fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("imageoptimize")
 }
 
+fn get_auto_output_type(output_type: &Option<String>, headers: &HeaderMap) -> Option<String> {
+    let Some(output_type) = output_type else {
+        return None;
+    };
+    if output_type != AUTO_OUTPUT_TYPE {
+        return None;
+    }
+    if let Ok(re) = Regex::new(r"image/([^,;]+)") {
+        let optim_config = get_default_optim_params();
+        let auto_output_types = &optim_config.auto_output_types;
+        let accept = headers
+            .get("accept")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+
+        let mut formats_set: HashSet<&str> = re
+            .captures_iter(accept)
+            .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
+            .collect();
+        // 此两类图片，浏览器均支持
+        formats_set.insert("png");
+        formats_set.insert("jpeg");
+        if let Some(format) = auto_output_types
+            .iter()
+            .find(|item| formats_set.contains(item.as_str()))
+        {
+            return Some(format.clone());
+        }
+    }
+    None
+}
+
 async fn optim(
     QueryParams(params): QueryParams<OptimParams>,
     headers: HeaderMap,
 ) -> Result<ImagePreview> {
+    let auto_output_type = get_auto_output_type(&params.output_type, &headers);
     let preview = run_image_task(ImageTaskParams {
         file: params.file,
         output_type: params.output_type,
         quality: params.quality,
-        headers,
+        auto_output_type,
         ..Default::default()
     })
     .await?;
@@ -160,13 +195,14 @@ async fn resize(
     QueryParams(params): QueryParams<ResizeParams>,
     headers: HeaderMap,
 ) -> Result<ImagePreview> {
+    let auto_output_type = get_auto_output_type(&params.output_type, &headers);
     let preview = run_image_task(ImageTaskParams {
         file: params.file,
         output_type: params.output_type,
         quality: params.quality,
-        headers,
         width: Some(params.width),
         height: Some(params.height),
+        auto_output_type,
         ..Default::default()
     })
     .await?;
@@ -192,11 +228,12 @@ async fn watermark(
     QueryParams(params): QueryParams<WatermarkParams>,
     headers: HeaderMap,
 ) -> Result<ImagePreview> {
+    let auto_output_type = get_auto_output_type(&params.output_type, &headers);
     let watermark = get_opendal_storage().read(&params.watermark).await?;
     let watermark = STANDARD.encode(watermark.to_vec());
     let preview = run_image_task(ImageTaskParams {
         file: params.file,
-        headers,
+        auto_output_type,
         watermark: Some(watermark),
         position: params.position,
         margin_left: params.margin_left,
@@ -229,6 +266,7 @@ async fn crop(
     QueryParams(params): QueryParams<CropParams>,
     headers: HeaderMap,
 ) -> Result<ImagePreview> {
+    let auto_output_type = get_auto_output_type(&params.output_type, &headers);
     let preview = run_image_task(ImageTaskParams {
         file: params.file,
         x: Some(params.x),
@@ -237,7 +275,7 @@ async fn crop(
         height: Some(params.height),
         quality: params.quality,
         output_type: params.output_type,
-        headers,
+        auto_output_type,
         ..Default::default()
     })
     .await?;

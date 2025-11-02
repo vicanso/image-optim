@@ -14,15 +14,13 @@
 
 use crate::config::must_get_config;
 use crate::dal::get_opendal_storage;
-use axum::http::HeaderMap;
+use cached::proc_macro::cached;
 use imageoptimize::{
     ProcessImage, new_crop_task, new_diff_task, new_optim_task, new_resize_task,
     new_watermark_task, run_with_image,
 };
 use once_cell::sync::OnceCell;
-use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashSet;
 use std::time::Duration;
 use tibba_config::humantime_serde;
 use tibba_error::Error;
@@ -80,12 +78,11 @@ async fn load_image(file: &str) -> Result<ProcessImage> {
     ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ImageTaskParams {
     pub file: String,
     pub output_type: Option<String>,
     pub quality: Option<u8>,
-    pub headers: HeaderMap,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub watermark: Option<String>,
@@ -94,35 +91,16 @@ pub struct ImageTaskParams {
     pub margin_top: Option<i32>,
     pub x: Option<u32>,
     pub y: Option<u32>,
+    pub auto_output_type: Option<String>,
 }
 
+#[cached(size = 1000, time = 1800, result = true, sync_writes = "by_key")]
 pub async fn run_image_task(params: ImageTaskParams) -> Result<(ProcessImage, bool)> {
     let optim_config = get_default_optim_params();
     let mut output_type = params.output_type;
     let mut cache_private = false;
-    if output_type == Some(AUTO_OUTPUT_TYPE.to_string())
-        && let Ok(re) = Regex::new(r"image/([^,;]+)")
-    {
-        let auto_output_types = &optim_config.auto_output_types;
-        let accept = params
-            .headers
-            .get("accept")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-
-        let mut formats_set: HashSet<&str> = re
-            .captures_iter(accept)
-            .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
-            .collect();
-        // 此两类图片，浏览器均支持
-        formats_set.insert("png");
-        formats_set.insert("jpeg");
-        if let Some(format) = auto_output_types
-            .iter()
-            .find(|item| formats_set.contains(item.as_str()))
-        {
-            output_type = Some(format.clone());
-        }
+    if let Some(auto_output_type) = params.auto_output_type {
+        output_type = Some(auto_output_type);
         cache_private = true;
     }
     let quality = params.quality.unwrap_or(optim_config.quality);
