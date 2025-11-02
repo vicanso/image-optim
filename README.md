@@ -16,7 +16,7 @@ docker run -d \
   -e IMOP_OPENDAL_URL=file:///opt/images \
   -e IMOP_OPTIM_QUALITY=80 \
   -e IMOP_OPTIM_SPEED=3 \
-  vicanso/image-optim:0.4.2
+  vicanso/image-optim:0.4.3
 ```
 
 ## API 接口说明
@@ -31,7 +31,7 @@ docker run -d \
 
 **Query 参数**:
 - `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
 - `quality` (可选): 图片压缩质量，范围 0-100，默认值为配置中的 `optim.quality`（默认 80）
 
 **返回头部**:
@@ -62,7 +62,7 @@ curl "http://127.0.0.1:3000/images/optim?file=images/photo.png"
 - `width` (可选): 目标宽度（像素），默认 0
 - `height` (可选): 目标高度（像素），默认 0
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
 
 **注意事项**:
 - `width` 和 `height` 不能同时为 0
@@ -94,7 +94,7 @@ curl "http://127.0.0.1:3000/images/resize?file=images/photo.jpg&width=1024&heigh
 - `margin_left` (可选): 水印左边距（像素），默认 0
 - `margin_top` (可选): 水印上边距（像素），默认 0
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
 
 **说明**:
 - 水印图片会被 Base64 编码后传递给图片处理库
@@ -124,7 +124,7 @@ curl "http://127.0.0.1:3000/images/watermark?file=images/photo.jpg&watermark=wat
 - `width` (必填): 裁剪宽度（像素）
 - `height` (必填): 裁剪高度（像素）
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
 
 **说明**:
 - 裁剪后会自动进行图片优化处理
@@ -151,6 +151,8 @@ curl "http://127.0.0.1:3000/images/crop?file=images/photo.jpg&width=800&height=6
 [optim]
 quality = 80  # 默认压缩质量 (0-100)
 speed = 3     # 默认压缩速度，主要影响 AVIF 格式 (1-10，速度越快压缩率越低)
+max_age = "1440h" # 默认缓存时间，默认 60 天(只能使用h的表示方式，不能使用d)
+auto_output_types = ["avif", "png"] # 自动检测时使用的图片格式，用于accept头部的图片格式检测
 ```
 
 ### 存储配置
