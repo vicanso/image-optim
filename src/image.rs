@@ -14,7 +14,7 @@
 
 use crate::dal::get_opendal_storage;
 use crate::image_task::{
-    AUTO_OUTPUT_TYPE, ImageTaskParams, get_default_optim_params, run_image_task,
+    AUTO_OUTPUT_TYPE, ImageTaskParams, ImageTaskResult, get_default_optim_params, run_image_task,
 };
 use axum::Router;
 use axum::body::Body;
@@ -23,7 +23,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use imageoptimize::ProcessImage;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -33,21 +32,13 @@ use validator::{Validate, ValidationError};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Default)]
 struct ImagePreview {
-    image: ProcessImage,
+    image: ImageTaskResult,
     cache_private: bool,
 }
-impl From<ProcessImage> for ImagePreview {
-    fn from(image: ProcessImage) -> Self {
-        Self {
-            image,
-            cache_private: false,
-        }
-    }
-}
-impl From<(ProcessImage, bool)> for ImagePreview {
-    fn from((image, cache_private): (ProcessImage, bool)) -> Self {
+
+impl From<(ImageTaskResult, bool)> for ImagePreview {
+    fn from((image, cache_private): (ImageTaskResult, bool)) -> Self {
         Self {
             image,
             cache_private,
@@ -59,12 +50,8 @@ impl From<(ProcessImage, bool)> for ImagePreview {
 impl IntoResponse for ImagePreview {
     fn into_response(self) -> Response {
         let img = self.image;
-        let buffer = match img.get_buffer() {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                return map_err(e).into_response();
-            }
-        };
+        let buffer = img.buffer;
+
         let ratio = (100 * buffer.len() / img.original_size).max(1);
         let mut res = Body::from(buffer).into_response();
 
@@ -115,11 +102,6 @@ struct OptimParams {
     output_type: Option<String>,
     quality: Option<u8>,
 }
-
-fn map_err(err: impl ToString) -> Error {
-    Error::new(err).with_category("imageoptimize")
-}
-
 fn get_auto_output_type(output_type: &Option<String>, headers: &HeaderMap) -> Option<String> {
     let Some(output_type) = output_type else {
         return None;

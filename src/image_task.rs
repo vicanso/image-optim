@@ -94,8 +94,16 @@ pub struct ImageTaskParams {
     pub auto_output_type: Option<String>,
 }
 
+#[derive(Default, Clone, Debug)]
+pub struct ImageTaskResult {
+    pub buffer: Vec<u8>,
+    pub original_size: usize,
+    pub ext: String,
+    pub diff: f64,
+}
+
 #[cached(size = 1000, time = 1800, result = true, sync_writes = "by_key")]
-pub async fn run_image_task(params: ImageTaskParams) -> Result<(ProcessImage, bool)> {
+pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult, bool)> {
     let optim_config = get_default_optim_params();
     let mut output_type = params.output_type;
     let mut cache_private = false;
@@ -155,5 +163,14 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ProcessImage, bo
     }
 
     img = run_with_image(img, tasks).await.map_err(map_err)?;
-    Ok((img, cache_private))
+    let buffer = img.get_buffer().map_err(map_err)?;
+    Ok((
+        ImageTaskResult {
+            buffer,
+            original_size: img.original_size,
+            ext: img.ext,
+            diff: img.diff,
+        },
+        cache_private,
+    ))
 }

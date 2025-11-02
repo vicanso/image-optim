@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "image-optim"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "async-trait",
  "axum",
