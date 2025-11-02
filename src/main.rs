@@ -23,6 +23,7 @@ use tracing_subscriber::FmtSubscriber;
 mod config;
 mod dal;
 mod image;
+mod image_task;
 mod router;
 mod state;
 

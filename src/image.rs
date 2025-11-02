@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::config::must_get_config;
 use crate::dal::get_opendal_storage;
+use crate::image_task::{
+    AUTO_OUTPUT_TYPE, ImageTaskParams, get_default_optim_params, run_image_task,
+};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderValue, header};
@@ -21,61 +23,13 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use imageoptimize::{
-    ProcessImage, new_crop_task, new_diff_task, new_optim_task, new_resize_task,
-    new_watermark_task, run_with_image,
-};
-use once_cell::sync::OnceCell;
-use regex::Regex;
+use imageoptimize::ProcessImage;
 use serde::Deserialize;
-use std::collections::HashSet;
-use std::time::Duration;
-use tibba_config::humantime_serde;
 use tibba_error::Error;
 use tibba_util::QueryParams;
 use validator::{Validate, ValidationError};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
-
-fn default_qualtiy() -> u8 {
-    80
-}
-
-fn default_speed() -> u8 {
-    3
-}
-
-fn default_max_age() -> Duration {
-    Duration::from_secs(2592000)
-}
-
-#[derive(Deserialize)]
-struct OptimConfig {
-    #[serde(default = "default_qualtiy")]
-    quality: u8,
-    #[serde(default = "default_speed")]
-    speed: u8,
-    #[serde(default = "default_max_age", with = "humantime_serde")]
-    max_age: Duration,
-    auto_output_types: Vec<String>,
-}
-
-static OPTIM_CONFIG: OnceCell<OptimConfig> = OnceCell::new();
-
-fn get_default_optim_params() -> &'static OptimConfig {
-    OPTIM_CONFIG.get_or_init(|| {
-        let app_config = must_get_config();
-        app_config
-            .sub_config("optim")
-            .try_deserialize::<OptimConfig>()
-            .unwrap_or(OptimConfig {
-                quality: 80,
-                speed: 3,
-                max_age: default_max_age(),
-                auto_output_types: vec![],
-            })
-    })
-}
 
 #[derive(Default)]
 struct ImagePreview {
@@ -90,9 +44,12 @@ impl From<ProcessImage> for ImagePreview {
         }
     }
 }
-impl ImagePreview {
-    pub fn set_cache_private(&mut self, cache_private: bool) {
-        self.cache_private = cache_private;
+impl From<(ProcessImage, bool)> for ImagePreview {
+    fn from((image, cache_private): (ProcessImage, bool)) -> Self {
+        Self {
+            image,
+            cache_private,
+        }
     }
 }
 
@@ -141,8 +98,6 @@ impl IntoResponse for ImagePreview {
     }
 }
 
-const AUTO_OUTPUT_TYPE: &str = "auto";
-
 fn x_output_type(output_type: &str) -> Result<(), ValidationError> {
     if ["jpeg", "jpg", "png", "webp", "avif", AUTO_OUTPUT_TYPE].contains(&output_type) {
         return Ok(());
@@ -162,61 +117,21 @@ struct OptimParams {
 fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("imageoptimize")
 }
-async fn load_image(file: &str) -> Result<ProcessImage> {
-    let ext = file.split('.').next_back().unwrap_or("jpeg");
-    let buffer = get_opendal_storage().read(file).await?;
-    ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)
-}
 
 async fn optim(
     QueryParams(params): QueryParams<OptimParams>,
     headers: HeaderMap,
 ) -> Result<ImagePreview> {
-    let optim_config = get_default_optim_params();
-    let mut output_type = params.output_type;
-    let mut cache_private = false;
-    if output_type == Some(AUTO_OUTPUT_TYPE.to_string())
-        && let Ok(re) = Regex::new(r"image/([^,;]+)")
-    {
-        let auto_output_types = &optim_config.auto_output_types;
-        let accept = headers
-            .get("accept")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
+    let preview = run_image_task(ImageTaskParams {
+        file: params.file,
+        output_type: params.output_type,
+        quality: params.quality,
+        headers,
+        ..Default::default()
+    })
+    .await?;
 
-        let mut formats_set: HashSet<&str> = re
-            .captures_iter(accept)
-            .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
-            .collect();
-        // 此两类图片，浏览器均支持
-        formats_set.insert("png");
-        formats_set.insert("jpeg");
-        if let Some(format) = auto_output_types
-            .iter()
-            .find(|item| formats_set.contains(item.as_str()))
-        {
-            output_type = Some(format.clone());
-        }
-        cache_private = true;
-    }
-    let quality = params.quality.unwrap_or(optim_config.quality);
-    let mut img = load_image(&params.file).await?;
-
-    let output_type = output_type.unwrap_or(img.ext.clone());
-    img = run_with_image(
-        img,
-        vec![
-            new_optim_task(&output_type, quality, optim_config.speed),
-            new_diff_task(),
-        ],
-    )
-    .await
-    .map_err(map_err)?;
-
-    let mut preview = ImagePreview::from(img);
-    preview.set_cache_private(cache_private);
-
-    Ok(preview)
+    Ok(preview.into())
 }
 
 fn validate_resize_params(params: &ResizeParams) -> Result<(), ValidationError> {
@@ -241,35 +156,22 @@ struct ResizeParams {
     output_type: Option<String>,
 }
 
-async fn resize(QueryParams(params): QueryParams<ResizeParams>) -> Result<ImagePreview> {
-    let optim_config = get_default_optim_params();
-    let mut img = load_image(&params.file).await?;
-    let quality = params.quality.unwrap_or(optim_config.quality);
-    let (w, h) = img.get_size();
-    let width = if params.width == 0 {
-        w * params.height / h
-    } else {
-        params.width
-    };
-    let ext = img.ext.clone();
+async fn resize(
+    QueryParams(params): QueryParams<ResizeParams>,
+    headers: HeaderMap,
+) -> Result<ImagePreview> {
+    let preview = run_image_task(ImageTaskParams {
+        file: params.file,
+        output_type: params.output_type,
+        quality: params.quality,
+        headers,
+        width: Some(params.width),
+        height: Some(params.height),
+        ..Default::default()
+    })
+    .await?;
 
-    let height = if params.height == 0 {
-        h * params.width / w
-    } else {
-        params.height
-    };
-    let output_type = params.output_type.unwrap_or(ext);
-    img = run_with_image(
-        img,
-        vec![
-            new_resize_task(width, height),
-            new_optim_task(&output_type, quality, optim_config.speed),
-        ],
-    )
-    .await
-    .map_err(map_err)?;
-
-    Ok(img.into())
+    Ok(preview.into())
 }
 
 #[derive(Debug, Deserialize, Clone, Validate)]
@@ -286,31 +188,26 @@ struct WatermarkParams {
     output_type: Option<String>,
 }
 
-async fn watermark(QueryParams(params): QueryParams<WatermarkParams>) -> Result<ImagePreview> {
-    let optim_config = get_default_optim_params();
+async fn watermark(
+    QueryParams(params): QueryParams<WatermarkParams>,
+    headers: HeaderMap,
+) -> Result<ImagePreview> {
     let watermark = get_opendal_storage().read(&params.watermark).await?;
     let watermark = STANDARD.encode(watermark.to_vec());
-    let mut img = load_image(&params.file).await?;
-    let ext = img.ext.clone();
-    let quality = params.quality.unwrap_or(optim_config.quality);
-    let output_type = params.output_type.unwrap_or(ext);
+    let preview = run_image_task(ImageTaskParams {
+        file: params.file,
+        headers,
+        watermark: Some(watermark),
+        position: params.position,
+        margin_left: params.margin_left,
+        margin_top: params.margin_top,
+        quality: params.quality,
+        output_type: params.output_type,
+        ..Default::default()
+    })
+    .await?;
 
-    img = run_with_image(
-        img,
-        vec![
-            new_watermark_task(
-                &watermark,
-                &params.position.unwrap_or_default(),
-                params.margin_left.unwrap_or_default(),
-                params.margin_top.unwrap_or_default(),
-            ),
-            new_optim_task(&output_type, quality, optim_config.speed),
-        ],
-    )
-    .await
-    .map_err(map_err)?;
-
-    Ok(img.into())
+    Ok(preview.into())
 }
 
 #[derive(Debug, Deserialize, Clone, Validate)]
@@ -328,22 +225,24 @@ struct CropParams {
     output_type: Option<String>,
 }
 
-async fn crop(QueryParams(params): QueryParams<CropParams>) -> Result<ImagePreview> {
-    let optim_config = get_default_optim_params();
-    let mut img = load_image(&params.file).await?;
-    let ext = img.ext.clone();
-    let quality = params.quality.unwrap_or(optim_config.quality);
-    let output_type = params.output_type.unwrap_or(ext);
-    img = run_with_image(
-        img,
-        vec![
-            new_crop_task(params.x, params.y, params.width, params.height),
-            new_optim_task(&output_type, quality, optim_config.speed),
-        ],
-    )
-    .await
-    .map_err(map_err)?;
-    Ok(img.into())
+async fn crop(
+    QueryParams(params): QueryParams<CropParams>,
+    headers: HeaderMap,
+) -> Result<ImagePreview> {
+    let preview = run_image_task(ImageTaskParams {
+        file: params.file,
+        x: Some(params.x),
+        y: Some(params.y),
+        width: Some(params.width),
+        height: Some(params.height),
+        quality: params.quality,
+        output_type: params.output_type,
+        headers,
+        ..Default::default()
+    })
+    .await?;
+
+    Ok(preview.into())
 }
 
 async fn command() -> Result<String> {
