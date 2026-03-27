@@ -176,8 +176,8 @@ auto_output_types = ["avif", "png"] # 自动检测时使用的图片格式，用
 
 ### 缓存策略
 
-- 所有处理后的图片都会设置 30 天的缓存时间 (`Cache-Control: public, max-age=2592000`)
-- 建议在前端或 CDN 层面配置缓存以提高性能
+- 所有处理后的图片都会设置缓存时间 (`Cache-Control: public, max-age=2592000`)，若图片格式是基于`accpet`判断，则缓存为`private`
+- 建议在反向代理或 CDN 层面配置缓存以提高性能
 
 ### 错误处理
 
