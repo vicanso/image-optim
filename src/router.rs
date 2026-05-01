@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::config::must_get_basic_config;
 use crate::image::new_image_router;
 use crate::state::get_app_state;
 use axum::Router;
@@ -22,11 +21,9 @@ use tibba_router_common::{CommonRouterParams, new_common_router};
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub fn new_router() -> Result<Router> {
-    let basic_config = must_get_basic_config();
     let common_router = new_common_router(CommonRouterParams {
         state: get_app_state(),
         cache: None,
-        commit_id: basic_config.commit_id.clone(),
     });
 
     Ok(Router::new()

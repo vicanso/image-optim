@@ -13,12 +13,11 @@
 // limitations under the License.
 
 use crate::config::must_get_config;
-use async_trait::async_trait;
 use ctor::ctor;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 use tibba_error::Error;
-use tibba_hook::{Task, register_task};
+use tibba_hook::{BoxFuture, Task, register_task};
 use tibba_opendal::{Storage, new_opendal_storage};
 use tracing::info;
 
@@ -35,22 +34,23 @@ pub fn get_opendal_storage() -> &'static Storage {
 
 struct DalTask;
 
-#[async_trait]
 impl Task for DalTask {
-    async fn before(&self) -> Result<bool> {
-        let app_config = must_get_config();
-        let storage = new_opendal_storage(&app_config.sub_config("opendal"))?;
-        let info = storage.info();
-        OPENDAL_STORAGE
-            .set(storage)
-            .map_err(|_| Error::new("set opendal storage fail"))?;
+    fn before(&self) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async {
+            let app_config = must_get_config();
+            let storage = new_opendal_storage(&app_config.sub_config("opendal"))?;
+            let info = storage.info();
+            OPENDAL_STORAGE
+                .set(storage)
+                .map_err(|_| Error::new("set opendal storage fail"))?;
 
-        info!(
-            schema = ?info.scheme(),
-            full_capability = ?info.full_capability(),
-            "open dal storage init success"
-        );
-        Ok(true)
+            info!(
+                schema = ?info.scheme(),
+                full_capability = ?info.full_capability(),
+                "open dal storage init success"
+            );
+            Ok(true)
+        })
     }
     fn priority(&self) -> u8 {
         16

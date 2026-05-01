@@ -14,10 +14,14 @@
 
 use crate::config::must_get_config;
 use crate::dal::get_opendal_storage;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use cached::proc_macro::cached;
 use imageoptimize::{
-    ProcessImage, new_crop_task, new_diff_task, new_optim_task, new_resize_task,
-    new_watermark_task, run_with_image,
+    ProcessImage, new_blur_task, new_brighten_task, new_contrast_task, new_crop_task,
+    new_diff_task, new_fit_task, new_flip_task, new_gray_task, new_optim_task, new_padding_task,
+    new_resize_task, new_rotate_task, new_sharpen_task, new_strip_task, new_watermark_task,
+    run_with_image,
 };
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -29,7 +33,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub const AUTO_OUTPUT_TYPE: &str = "auto";
 
-fn default_qualtiy() -> u8 {
+fn default_quality() -> u8 {
     80
 }
 
@@ -43,7 +47,7 @@ fn default_max_age() -> Duration {
 
 #[derive(Deserialize)]
 pub struct OptimConfig {
-    #[serde(default = "default_qualtiy")]
+    #[serde(default = "default_quality")]
     pub quality: u8,
     #[serde(default = "default_speed")]
     pub speed: u8,
@@ -68,6 +72,7 @@ pub fn get_default_optim_params() -> &'static OptimConfig {
             })
     })
 }
+
 fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("imageoptimize")
 }
@@ -78,20 +83,40 @@ async fn load_image(file: &str) -> Result<ProcessImage> {
     ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)
 }
 
+/// 文件路径或内容型任务参数，用作缓存 key（须实现 Hash + Eq）。
+/// f32 字段以字符串形式存储（如 "1.5"），避免 f32 不实现 Hash 的问题。
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ImageTaskParams {
     pub file: String,
     pub output_type: Option<String>,
     pub quality: Option<u8>,
+    // resize: width/height 同时为 0 时不触发
     pub width: Option<u32>,
     pub height: Option<u32>,
+    // fit: 缩放至不超过指定尺寸，保持比例，不放大
+    pub fit_width: Option<u32>,
+    pub fit_height: Option<u32>,
+    // watermark: 水印文件路径
     pub watermark: Option<String>,
     pub position: Option<String>,
     pub margin_left: Option<i32>,
     pub margin_top: Option<i32>,
+    // crop
     pub x: Option<u32>,
     pub y: Option<u32>,
     pub auto_output_type: Option<String>,
+    // 图像调整参数
+    pub rotate: Option<u16>,
+    pub flip: Option<String>,
+    pub gray: bool,
+    pub sharpen: Option<String>, // "sigma" 或 "sigma,threshold"
+    pub blur: Option<String>,    // sigma 字符串
+    pub brighten: Option<i32>,
+    pub contrast: Option<String>, // f32 字符串
+    pub strip: bool,
+    pub padding_width: Option<u32>,
+    pub padding_height: Option<u32>,
+    pub padding_color: Option<String>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -100,6 +125,67 @@ pub struct ImageTaskResult {
     pub original_size: usize,
     pub ext: String,
     pub diff: f64,
+}
+
+/// POST /images/process 流水线操作，按数组顺序依次执行。
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Op {
+    Fit {
+        width: u32,
+        height: u32,
+    },
+    Resize {
+        width: u32,
+        height: u32,
+    },
+    Crop {
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    },
+    Rotate {
+        deg: u16,
+    },
+    Flip {
+        dir: String,
+    },
+    Gray,
+    Sharpen {
+        sigma: f32,
+        #[serde(default)]
+        threshold: i32,
+    },
+    Blur {
+        sigma: f32,
+    },
+    Brighten {
+        value: i32,
+    },
+    Contrast {
+        value: f32,
+    },
+    Strip,
+    Padding {
+        width: u32,
+        height: u32,
+        #[serde(default)]
+        color: String,
+    },
+    Watermark {
+        data: String,
+        #[serde(default)]
+        position: String,
+        #[serde(default)]
+        margin_left: i32,
+        #[serde(default)]
+        margin_top: i32,
+    },
+    Optim {
+        output_type: Option<String>,
+        quality: Option<u8>,
+    },
 }
 
 #[cached(size = 1000, time = 1800, result = true, sync_writes = "by_key")]
@@ -113,20 +199,20 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
     }
     let quality = params.quality.unwrap_or(optim_config.quality);
     let mut img = load_image(&params.file).await?;
-
     let output_type = output_type.unwrap_or(img.ext.clone());
 
-    let mut tasks = Vec::with_capacity(4);
+    let mut tasks: Vec<Vec<String>> = Vec::with_capacity(16);
     let mut should_add_diff_task = true;
 
-    if let Some(watermark) = params.watermark {
+    if let Some(watermark_path) = params.watermark {
+        let watermark_data = get_opendal_storage().read(&watermark_path).await?;
+        let watermark_b64 = STANDARD.encode(watermark_data.to_vec());
         tasks.push(new_watermark_task(
-            &watermark,
+            &watermark_b64,
             &params.position.unwrap_or_default(),
             params.margin_left.unwrap_or_default(),
             params.margin_top.unwrap_or_default(),
         ));
-        // 增加水印则图片已经发生了变化，因此不需要计算差异
         should_add_diff_task = false;
     }
 
@@ -139,7 +225,6 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
             params.width.unwrap_or_default(),
             params.height.unwrap_or_default(),
         ));
-        // 裁剪则图片已经发生了变化，因此不需要计算差异
         should_add_diff_task = false;
     }
 
@@ -148,22 +233,88 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
         let height = params.height.unwrap_or_default();
         let (w, h) = img.get_size();
         let width = if width == 0 { w * height / h } else { width };
-
         let height = if height == 0 { h * width / w } else { height };
         tasks.push(new_resize_task(width, height));
+        should_add_diff_task = false;
+    }
 
-        // 由于图片的宽高有变化，因此不需要计算差异
+    if params.fit_width.is_some() || params.fit_height.is_some() {
+        tasks.push(new_fit_task(
+            params.fit_width.unwrap_or_default(),
+            params.fit_height.unwrap_or_default(),
+        ));
+        should_add_diff_task = false;
+    }
+
+    if let Some(deg) = params.rotate {
+        tasks.push(new_rotate_task(deg));
+        should_add_diff_task = false;
+    }
+
+    if let Some(dir) = &params.flip {
+        tasks.push(new_flip_task(dir));
+        should_add_diff_task = false;
+    }
+
+    if params.gray {
+        tasks.push(new_gray_task());
+        should_add_diff_task = false;
+    }
+
+    if let Some(val) = params.brighten {
+        tasks.push(new_brighten_task(val));
+        should_add_diff_task = false;
+    }
+
+    if let Some(val) = &params.contrast
+        && let Ok(v) = val.parse::<f32>()
+    {
+        tasks.push(new_contrast_task(v));
+        should_add_diff_task = false;
+    }
+
+    if let Some(val) = &params.sharpen {
+        let mut parts = val.splitn(2, ',');
+        if let Some(sigma_str) = parts.next()
+            && let Ok(sigma) = sigma_str.parse::<f32>()
+        {
+            let threshold = parts
+                .next()
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(0);
+            tasks.push(new_sharpen_task(sigma, threshold));
+            should_add_diff_task = false;
+        }
+    }
+
+    if let Some(val) = &params.blur
+        && let Ok(sigma) = val.parse::<f32>()
+    {
+        tasks.push(new_blur_task(sigma));
+        should_add_diff_task = false;
+    }
+
+    if params.padding_width.is_some() || params.padding_height.is_some() {
+        tasks.push(new_padding_task(
+            params.padding_width.unwrap_or_default(),
+            params.padding_height.unwrap_or_default(),
+            params.padding_color.as_deref().unwrap_or_default(),
+        ));
         should_add_diff_task = false;
     }
 
     tasks.push(new_optim_task(&output_type, quality, optim_config.speed));
+
+    if params.strip {
+        tasks.push(new_strip_task());
+    }
 
     if should_add_diff_task {
         tasks.push(new_diff_task());
     }
 
     img = run_with_image(img, tasks).await.map_err(map_err)?;
-    let buffer = img.get_buffer().map_err(map_err)?;
+    let buffer = img.get_buffer().map_err(map_err)?.to_vec();
     Ok((
         ImageTaskResult {
             buffer,
@@ -173,4 +324,78 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
         },
         cache_private,
     ))
+}
+
+/// 按 ops 顺序执行流水线，不走缓存。
+/// 若 ops 中不含 Optim，自动在末尾追加默认编码步骤。
+pub async fn run_image_pipeline(data: Vec<u8>, ext: &str, ops: Vec<Op>) -> Result<ImageTaskResult> {
+    let optim_config = get_default_optim_params();
+    let mut img = ProcessImage::new(data, ext).map_err(map_err)?;
+    let original_ext = img.ext.clone();
+
+    let mut tasks: Vec<Vec<String>> = Vec::with_capacity(ops.len() + 1);
+    let mut has_optim = false;
+
+    for op in ops {
+        match op {
+            Op::Fit { width, height } => tasks.push(new_fit_task(width, height)),
+            Op::Resize { width, height } => tasks.push(new_resize_task(width, height)),
+            Op::Crop {
+                x,
+                y,
+                width,
+                height,
+            } => tasks.push(new_crop_task(x, y, width, height)),
+            Op::Rotate { deg } => tasks.push(new_rotate_task(deg)),
+            Op::Flip { dir } => tasks.push(new_flip_task(&dir)),
+            Op::Gray => tasks.push(new_gray_task()),
+            Op::Sharpen { sigma, threshold } => tasks.push(new_sharpen_task(sigma, threshold)),
+            Op::Blur { sigma } => tasks.push(new_blur_task(sigma)),
+            Op::Brighten { value } => tasks.push(new_brighten_task(value)),
+            Op::Contrast { value } => tasks.push(new_contrast_task(value)),
+            Op::Strip => tasks.push(new_strip_task()),
+            Op::Padding {
+                width,
+                height,
+                color,
+            } => tasks.push(new_padding_task(width, height, &color)),
+            Op::Watermark {
+                data,
+                position,
+                margin_left,
+                margin_top,
+            } => tasks.push(new_watermark_task(
+                &data,
+                &position,
+                margin_left,
+                margin_top,
+            )),
+            Op::Optim {
+                output_type,
+                quality,
+            } => {
+                let fmt = output_type.as_deref().unwrap_or(&original_ext);
+                let q = quality.unwrap_or(optim_config.quality);
+                tasks.push(new_optim_task(fmt, q, optim_config.speed));
+                has_optim = true;
+            }
+        }
+    }
+
+    if !has_optim {
+        tasks.push(new_optim_task(
+            &original_ext,
+            optim_config.quality,
+            optim_config.speed,
+        ));
+    }
+
+    img = run_with_image(img, tasks).await.map_err(map_err)?;
+    let buffer = img.get_buffer().map_err(map_err)?.to_vec();
+    Ok(ImageTaskResult {
+        buffer,
+        original_size: img.original_size,
+        ext: img.ext,
+        diff: img.diff,
+    })
 }

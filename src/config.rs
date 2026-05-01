@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_trait::async_trait;
 use ctor::ctor;
 use once_cell::sync::OnceCell;
 use rust_embed::RustEmbed;
@@ -21,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tibba_config::{Config, humantime_serde};
 use tibba_error::Error;
-use tibba_hook::{Task, register_task};
+use tibba_hook::{BoxFuture, Task, register_task};
 use tibba_util::get_env;
 use tracing::info;
 use validator::Validate;
@@ -80,10 +79,14 @@ fn new_config() -> Result<&'static Config> {
                 .ok_or(map_err(format!("{name} not found")))?
                 .data;
             info!(category, "load config from {name}",);
-            arr.push(std::str::from_utf8(&data).unwrap_or_default().to_string());
+            let s = std::str::from_utf8(&data).map_err(|e| map_err(e.to_string()))?;
+            arr.push(s.to_string());
         }
 
-        let config = Config::new(arr.iter().map(|s| s.as_str()).collect(), Some("IMOP"))?;
+        let config = Config::new(
+            &arr.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            Some("IMOP"),
+        )?;
         Ok(config)
     })
 }
@@ -109,11 +112,12 @@ pub fn must_get_config() -> &'static Config {
 
 struct ConfigTask;
 
-#[async_trait]
 impl Task for ConfigTask {
-    async fn before(&self) -> Result<bool> {
-        init_config()?;
-        Ok(true)
+    fn before(&self) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async {
+            init_config()?;
+            Ok(true)
+        })
     }
 }
 

@@ -4,7 +4,10 @@
 
 可以通过环境变量指定以下参数：
 
-- `IMOP_OPENDAL_URL`: OpenDAL 存储的 URL，默认为`file:///opt/images`
+- `IMOP_OPENDAL_URL`: OpenDAL 存储的 URL，默认为`file:///opt/images`，支持以下格式：
+  - 本地文件系统：`file:///opt/images`
+  - HTTP/HTTPS：`http://your-server/images` 或 `https://your-server/images`
+  - S3 兼容存储：`s3://bucket-name?region=us-east-1&access_key_id=xxx&secret_access_key=xxx&endpoint=https://s3.amazonaws.com`
 - `IMOP_OPTIM_QUALITY`: 图片压缩质量，默认 80
 - `IMOP_OPTIM_SPEED`: 图片压缩速度，默认 3
 
@@ -157,7 +160,7 @@ auto_output_types = ["avif", "png"] # 自动检测时使用的图片格式，用
 
 ### 存储配置
 
-图片文件和水印文件均从 OpenDAL 配置的存储中读取，请确保正确配置存储后端。
+图片文件和水印文件均从 OpenDAL 配置的存储中读取，支持本地文件系统、HTTP/HTTPS 以及 S3 兼容存储（阿里云 OSS、MinIO 等），通过 `IMOP_OPENDAL_URL` 环境变量配置。
 
 ---
 

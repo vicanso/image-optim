@@ -15,8 +15,6 @@ use tibba_scheduler::run_scheduler_jobs;
 use tibba_util::is_development;
 use tokio::signal;
 use tower::ServiceBuilder;
-use tower_http::compression::CompressionLayer;
-use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
 use tracing::{Level, error, info};
 use tracing_subscriber::FmtSubscriber;
 
@@ -47,13 +45,9 @@ pub async fn handle_error(
         (err.to_string(), "exception".to_string(), 500)
     };
 
-    // Create and return appropriate HttpError
-    tibba_error::Error {
-        message,
-        category,
-        status,
-        ..Default::default()
-    }
+    tibba_error::Error::new(message)
+        .with_category(category)
+        .with_status(status)
 }
 
 fn init_logger() {
@@ -116,16 +110,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         new_router()?
     };
 
-    let predicate = SizeAbove::new(1024)
-        .and(NotForContentType::GRPC)
-        .and(NotForContentType::IMAGES)
-        .and(NotForContentType::SSE);
     let state = get_app_state();
     let app = app.layer(
         // service build layer execute by add order
         ServiceBuilder::new()
             .layer(HandleErrorLayer::new(handle_error))
-            .layer(CompressionLayer::new().compress_when(predicate))
             .timeout(basic_config.timeout)
             .layer(from_fn_with_state(state, entry))
             .layer(from_fn_with_state(state, stats))

@@ -13,13 +13,12 @@
 // limitations under the License.
 
 use super::config::must_get_basic_config;
-use async_trait::async_trait;
 use ctor::ctor;
 use once_cell::sync::{Lazy, OnceCell};
 use std::sync::Arc;
 use std::time::Duration;
 use tibba_error::Error;
-use tibba_hook::{Task, register_task};
+use tibba_hook::{BoxFuture, Task, register_task};
 use tibba_performance::get_process_system_info;
 use tibba_scheduler::{Job, register_job_task};
 use tibba_state::AppState;
@@ -37,6 +36,7 @@ struct Performance {
     memory_usage_mb: u32,
     cpu_usage: u16,
     cpu_time: u64,
+    cpu_time_total: u64,
     open_files: usize,
     written_mb: u32,
     read_mb: u32,
@@ -62,7 +62,10 @@ async fn update_performance() {
     data.refresh_count += 1;
     data.memory_usage_mb = (process_system_info.memory_usage / mb) as u32;
     data.cpu_usage = process_system_info.cpu_usage as u16;
-    data.cpu_time = process_system_info.cpu_time - data.cpu_time;
+    data.cpu_time = process_system_info
+        .cpu_time
+        .saturating_sub(data.cpu_time_total);
+    data.cpu_time_total = process_system_info.cpu_time;
     data.open_files = process_system_info.open_files.unwrap_or(0);
     data.written_mb = (process_system_info.written_bytes / mb) as u32;
     data.read_mb = (process_system_info.read_bytes / mb) as u32;
@@ -78,15 +81,16 @@ async fn update_performance() {
 }
 
 struct StateTask;
-#[async_trait]
 impl Task for StateTask {
-    async fn before(&self) -> Result<bool> {
-        let job = Job::new_repeated_async(Duration::from_secs(60), move |_, _| {
-            Box::pin(update_performance())
+    fn before(&self) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async {
+            let job = Job::new_repeated_async(Duration::from_secs(60), move |_, _| {
+                Box::pin(update_performance())
+            })
+            .map_err(Error::new)?;
+            register_job_task("application_performance", job);
+            Ok(true)
         })
-        .map_err(Error::new)?;
-        register_job_task("application_performance", job);
-        Ok(true)
     }
     fn priority(&self) -> u8 {
         u8::MAX
@@ -94,16 +98,16 @@ impl Task for StateTask {
 }
 
 struct StopAppTask;
-#[async_trait]
 impl Task for StopAppTask {
-    async fn after(&self) -> Result<bool> {
-        if !is_production() {
-            return Ok(false);
-        }
-        // set flag --> wait x seconds
-        get_app_state().stop();
-        tokio::time::sleep(Duration::from_secs(10)).await;
-        Ok(true)
+    fn after(&self) -> BoxFuture<'_, Result<bool>> {
+        Box::pin(async {
+            if !is_production() {
+                return Ok(false);
+            }
+            get_app_state().stop();
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            Ok(true)
+        })
     }
 }
 
