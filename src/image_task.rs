@@ -49,11 +49,27 @@ fn default_max_age() -> Duration {
 pub struct OptimConfig {
     #[serde(default = "default_quality")]
     pub quality: u8,
+    pub quality_jpeg: Option<u8>,
+    pub quality_png: Option<u8>,
+    pub quality_webp: Option<u8>,
+    pub quality_avif: Option<u8>,
     #[serde(default = "default_speed")]
     pub speed: u8,
     #[serde(default = "default_max_age", with = "humantime_serde")]
     pub max_age: Duration,
     pub auto_output_types: Vec<String>,
+}
+
+impl OptimConfig {
+    pub fn quality_for(&self, format: &str) -> u8 {
+        match format {
+            "jpeg" | "jpg" => self.quality_jpeg.unwrap_or(self.quality),
+            "png" => self.quality_png.unwrap_or(self.quality),
+            "webp" => self.quality_webp.unwrap_or(self.quality),
+            "avif" => self.quality_avif.unwrap_or(self.quality),
+            _ => self.quality,
+        }
+    }
 }
 
 static OPTIM_CONFIG: OnceCell<OptimConfig> = OnceCell::new();
@@ -66,6 +82,10 @@ pub fn get_default_optim_params() -> &'static OptimConfig {
             .try_deserialize::<OptimConfig>()
             .unwrap_or(OptimConfig {
                 quality: 80,
+                quality_jpeg: None,
+                quality_png: None,
+                quality_webp: None,
+                quality_avif: None,
                 speed: 3,
                 max_age: default_max_age(),
                 auto_output_types: vec![],
@@ -197,9 +217,11 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
         output_type = Some(auto_output_type);
         cache_private = true;
     }
-    let quality = params.quality.unwrap_or(optim_config.quality);
     let mut img = load_image(&params.file).await?;
     let output_type = output_type.unwrap_or(img.ext.clone());
+    let quality = params
+        .quality
+        .unwrap_or_else(|| optim_config.quality_for(&output_type));
 
     let mut tasks: Vec<Vec<String>> = Vec::with_capacity(16);
     let mut should_add_diff_task = true;
@@ -375,7 +397,7 @@ pub async fn run_image_pipeline(data: Vec<u8>, ext: &str, ops: Vec<Op>) -> Resul
                 quality,
             } => {
                 let fmt = output_type.as_deref().unwrap_or(&original_ext);
-                let q = quality.unwrap_or(optim_config.quality);
+                let q = quality.unwrap_or_else(|| optim_config.quality_for(fmt));
                 tasks.push(new_optim_task(fmt, q, optim_config.speed));
                 has_optim = true;
             }
@@ -385,7 +407,7 @@ pub async fn run_image_pipeline(data: Vec<u8>, ext: &str, ops: Vec<Op>) -> Resul
     if !has_optim {
         tasks.push(new_optim_task(
             &original_ext,
-            optim_config.quality,
+            optim_config.quality_for(&original_ext),
             optim_config.speed,
         ));
     }

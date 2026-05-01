@@ -8,7 +8,11 @@
   - 本地文件系统：`file:///opt/images`
   - HTTP/HTTPS：`http://your-server/images` 或 `https://your-server/images`
   - S3 兼容存储：`s3://bucket-name?region=us-east-1&access_key_id=xxx&secret_access_key=xxx&endpoint=https://s3.amazonaws.com`
-- `IMOP_OPTIM_QUALITY`: 图片压缩质量，默认 80
+- `IMOP_OPTIM_QUALITY`: 图片压缩质量（全格式默认值），默认 80
+- `IMOP_OPTIM_QUALITY_JPEG`: JPEG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
+- `IMOP_OPTIM_QUALITY_PNG`: PNG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
+- `IMOP_OPTIM_QUALITY_WEBP`: WebP 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
+- `IMOP_OPTIM_QUALITY_AVIF`: AVIF 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
 - `IMOP_OPTIM_SPEED`: 图片压缩速度，默认 3
 
 ```bash
@@ -19,7 +23,7 @@ docker run -d \
   -e IMOP_OPENDAL_URL=file:///opt/images \
   -e IMOP_OPTIM_QUALITY=80 \
   -e IMOP_OPTIM_SPEED=3 \
-  vicanso/image-optim:0.4.3
+  vicanso/image-optim
 ```
 
 ## API 接口说明
@@ -152,9 +156,13 @@ curl "http://127.0.0.1:3000/images/crop?file=images/photo.jpg&width=800&height=6
 
 ```toml
 [optim]
-quality = 80  # 默认压缩质量 (0-100)
-speed = 3     # 默认压缩速度，主要影响 AVIF 格式 (1-10，速度越快压缩率越低)
-max_age = "1440h" # 默认缓存时间，默认 60 天(只能使用h的表示方式，不能使用d)
+quality = 80        # 全格式默认压缩质量 (0-100)
+quality_jpeg = 85   # JPEG 专用质量，未设置时使用 quality
+quality_png = 90    # PNG 专用质量，未设置时使用 quality
+quality_webp = 80   # WebP 专用质量，未设置时使用 quality
+quality_avif = 70   # AVIF 专用质量，未设置时使用 quality
+speed = 3           # 默认压缩速度，主要影响 AVIF 格式 (1-10，速度越快压缩率越低)
+max_age = "1440h"   # 默认缓存时间，默认 60 天(只能使用h的表示方式，不能使用d)
 auto_output_types = ["avif", "png"] # 自动检测时使用的图片格式，用于accept头部的图片格式检测
 ```
 
