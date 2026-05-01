@@ -8,7 +8,7 @@ RUN rustup target list --installed
 RUN curl -L https://github.com/vicanso/http-stat-rs/releases/latest/download/httpstat-linux-musl-$(uname -m).tar.gz | tar -xzf -
   RUN mv httpstat /usr/local/bin/
 RUN cd /image-optim \
-  && cargo build --release --locked
+  && cargo build --release
 
 FROM ubuntu:24.04
 
