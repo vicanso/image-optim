@@ -22,6 +22,10 @@ docker run -d \
   -v ~/Downloads:/opt/images \
   -e IMOP_OPENDAL_URL=file:///opt/images \
   -e IMOP_OPTIM_QUALITY=80 \
+  -e IMOP_OPTIM_QUALITY_JPEG=85 \
+  -e IMOP_OPTIM_QUALITY_PNG=90 \
+  -e IMOP_OPTIM_QUALITY_WEBP=80 \
+  -e IMOP_OPTIM_QUALITY_AVIF=70 \
   -e IMOP_OPTIM_SPEED=3 \
   vicanso/image-optim
 ```
