@@ -15,21 +15,57 @@
 use crate::config::must_get_config;
 use ctor::ctor;
 use once_cell::sync::OnceCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tibba_error::Error;
 use tibba_hook::{BoxFuture, Task, register_task};
-use tibba_opendal::{Storage, new_opendal_storage};
+use tibba_opendal::{Storage, new_opendal_storage, new_opendal_storage_from_url};
 use tracing::info;
 
 type Result<T> = std::result::Result<T, Error>;
 
 static OPENDAL_STORAGE: OnceCell<Storage> = OnceCell::new();
+static NAMED_STORAGES: OnceCell<HashMap<String, Storage>> = OnceCell::new();
 
+/// 默认 OpenDAL 存储（来自 `IMOP_OPENDAL_URL`）。未初始化时 panic。
 pub fn get_opendal_storage() -> &'static Storage {
-    // init opendal storage is checked in init function
     OPENDAL_STORAGE
         .get()
         .unwrap_or_else(|| panic!("opendal storage not initialized"))
+}
+
+/// 按名字查找命名 OpenDAL 存储（来自 `IMOP_OPENDAL_<NAME>_URL`）。
+/// 名字大小写不敏感，未找到返回 `None`。
+pub fn get_opendal_storage_by_name(name: &str) -> Option<&'static Storage> {
+    NAMED_STORAGES
+        .get()
+        .and_then(|map| map.get(&name.to_lowercase()))
+}
+
+/// 扫描环境变量 `IMOP_OPENDAL_<NAME>_URL`，返回 `(小写名, URL)` 列表。
+/// 排除裸 `IMOP_OPENDAL_URL`（默认存储），名字段为空时跳过。
+fn collect_named_source_envs() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for (key, value) in std::env::vars() {
+        if let Some(rest) = key.strip_prefix("IMOP_OPENDAL_")
+            && let Some(name) = rest.strip_suffix("_URL")
+            && !name.is_empty()
+        {
+            out.push((name.to_lowercase(), value));
+        }
+    }
+    out
+}
+
+/// 用单个 URL 字符串构造一个 Storage。
+fn build_storage_from_url(url: &str) -> Result<Storage> {
+    // tibba-opendal 仅在 schema == "http" 时走 HTTP 后端；http(s):// URL 自动补上。
+    let schema = if url.starts_with("http://") || url.starts_with("https://") {
+        Some("http")
+    } else {
+        None
+    };
+    new_opendal_storage_from_url(url, schema).map_err(Error::new)
 }
 
 struct DalTask;
@@ -49,6 +85,23 @@ impl Task for DalTask {
                 full_capability = ?info.full_capability(),
                 "open dal storage init success"
             );
+
+            let mut named: HashMap<String, Storage> = HashMap::new();
+            for (name, url) in collect_named_source_envs() {
+                let storage = build_storage_from_url(&url)?;
+                let info = storage.info();
+                info!(
+                    source = %name,
+                    schema = ?info.scheme(),
+                    full_capability = ?info.full_capability(),
+                    "open dal named storage init success"
+                );
+                named.insert(name, storage);
+            }
+            NAMED_STORAGES
+                .set(named)
+                .map_err(|_| Error::new("set opendal named storages fail"))?;
+
             Ok(true)
         })
     }

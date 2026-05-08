@@ -4,10 +4,14 @@
 
 可以通过环境变量指定以下参数：
 
-- `IMOP_OPENDAL_URL`: OpenDAL 存储的 URL，默认为`file:///opt/images`，支持以下格式：
+- `IMOP_OPENDAL_URL`: 默认 OpenDAL 存储的 URL，默认为`file:///opt/images`，支持以下格式：
   - 本地文件系统：`file:///opt/images`
   - HTTP/HTTPS：`http://your-server/images` 或 `https://your-server/images`
   - S3 兼容存储：`s3://bucket-name?region=us-east-1&access_key_id=xxx&secret_access_key=xxx&endpoint=https://s3.amazonaws.com`
+- `IMOP_OPENDAL_<NAME>_URL`: 命名 OpenDAL 存储源（可配置多个），名字大小写不敏感。请求时通过 `?source=<NAME>` 选择对应源；不传 `source` 时使用默认存储。例如：
+  - `IMOP_OPENDAL_USERS_URL=file:///opt/images/users`
+  - `IMOP_OPENDAL_BAIDU_URL=https://www.baidu.com`
+  - 调用：`/images/optim?source=BAIDU&file=image.jpg` 从 `baidu` 源读取 `https://www.baidu.com/image.jpg`
 - `IMOP_OPTIM_QUALITY`: 图片压缩质量（全格式默认值），默认 80
 - `IMOP_OPTIM_QUALITY_JPEG`: JPEG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
 - `IMOP_OPTIM_QUALITY_PNG`: PNG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
@@ -33,6 +37,12 @@ docker run -d \
 ## API 接口说明
 
 基于存储的图片处理服务提供了以下 REST API 接口，所有接口通过 GET 请求并使用 Query 参数传递。
+
+### 通用参数
+
+所有图片处理接口（`optim` / `resize` / `fit` / `watermark` / `crop` / `padding`）都支持以下通用参数：
+
+- `source` (可选): 选择 OpenDAL 存储源名（对应 `IMOP_OPENDAL_<NAME>_URL`），名字大小写不敏感；未提供时使用默认 `IMOP_OPENDAL_URL`。`watermark` 端点的水印文件也从同一存储源读取。
 
 ### 1. 图片优化 (`/images/optim`)
 

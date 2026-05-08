@@ -98,6 +98,8 @@ fn x_output_type(output_type: &str) -> Result<(), ValidationError> {
 /// 所有 GET 端点共享的图像调整参数，通过 `#[serde(flatten)]` 嵌入各端点结构体。
 #[derive(Debug, Deserialize, Clone, Default)]
 struct AdjustParams {
+    /// OpenDAL 存储源名，对应 `IMOP_OPENDAL_<NAME>_URL`；未设置时使用默认存储。
+    source: Option<String>,
     /// 旋转角度：90 / 180 / 270
     rotate: Option<u16>,
     /// 翻转方向：h / horizontal / v / vertical
@@ -126,6 +128,11 @@ struct AdjustParams {
 
 impl AdjustParams {
     fn apply_to(&self, p: &mut ImageTaskParams) {
+        p.source = self
+            .source
+            .as_ref()
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty());
         p.rotate = self.rotate;
         p.flip = self.flip.clone();
         p.gray = self.gray;

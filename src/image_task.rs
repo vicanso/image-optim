@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::config::must_get_config;
-use crate::dal::get_opendal_storage;
+use crate::dal::{get_opendal_storage, get_opendal_storage_by_name};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use cached::proc_macro::cached;
@@ -97,9 +97,21 @@ fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("imageoptimize")
 }
 
-async fn load_image(file: &str) -> Result<ProcessImage> {
+/// 根据 source 返回对应的 OpenDAL 存储；未指定时返回默认存储；指定但未找到时返回 400 错误。
+fn resolve_storage(source: Option<&str>) -> Result<&'static tibba_opendal::Storage> {
+    match source {
+        None => Ok(get_opendal_storage()),
+        Some(name) => get_opendal_storage_by_name(name).ok_or_else(|| {
+            Error::new(format!("opendal source not found: {name}"))
+                .with_category("imageoptimize")
+                .with_status(400)
+        }),
+    }
+}
+
+async fn load_image(file: &str, source: Option<&str>) -> Result<ProcessImage> {
     let ext = file.split('.').next_back().unwrap_or("jpeg");
-    let buffer = get_opendal_storage().read(file).await?;
+    let buffer = resolve_storage(source)?.read(file).await?;
     ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)
 }
 
@@ -108,6 +120,8 @@ async fn load_image(file: &str) -> Result<ProcessImage> {
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ImageTaskParams {
     pub file: String,
+    /// OpenDAL 存储源名（来自 `IMOP_OPENDAL_<NAME>_URL`）；未设置时使用默认存储。
+    pub source: Option<String>,
     pub output_type: Option<String>,
     pub quality: Option<u8>,
     // resize: width/height 同时为 0 时不触发
@@ -217,7 +231,8 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
         output_type = Some(auto_output_type);
         cache_private = true;
     }
-    let mut img = load_image(&params.file).await?;
+    let source = params.source.as_deref();
+    let mut img = load_image(&params.file, source).await?;
     let output_type = output_type.unwrap_or(img.ext.clone());
     let quality = params
         .quality
@@ -227,7 +242,7 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
     let mut should_add_diff_task = true;
 
     if let Some(watermark_path) = params.watermark {
-        let watermark_data = get_opendal_storage().read(&watermark_path).await?;
+        let watermark_data = resolve_storage(source)?.read(&watermark_path).await?;
         let watermark_b64 = STANDARD.encode(watermark_data.to_vec());
         tasks.push(new_watermark_task(
             &watermark_b64,

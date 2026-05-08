@@ -4618,9 +4618,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-cache"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b48228e1042d7d2093e21020a2a2745b7a720e1d240f73acd6d6ef654a000b6"
+checksum = "9388c9a39f2b5566c739523d905d02b4919c1c08f1ae6d1bfa70b2efee93c43a"
 dependencies = [
  "deadpool-redis",
  "humantime-serde",
@@ -4640,9 +4640,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-config"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abfce2f20e807e38a2ae7d6b18e2b83121b264c5e60ccf09e7f8685ff44a4bd9"
+checksum = "a181d2c8d26769570bdf1f62e24a623e9503c7ccce9ade35bd4e1132caf9bd7b"
 dependencies = [
  "bytesize-serde",
  "config",
@@ -4656,9 +4656,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-error"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a3de86eff7ac448b67164d82dc632ce78378626cc9e639b6b90950df6fa864e"
+checksum = "6eb1fc1cacec4cfd9f7b960bee4b33c57825c4431caa632234266984b9b08cfc"
 dependencies = [
  "axum",
  "serde",
@@ -4666,9 +4666,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-hook"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "690be6d8ee1682f89a0b11e9dd60aa4e1e13e2349370056ae764b367f13b13fe"
+checksum = "dd77877cbc91b62075a0c091793bd7f866df6251e13c8f309e0609e6590ba789"
 dependencies = [
  "dashmap",
  "tibba-error",
@@ -4677,9 +4677,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-middleware"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80fc447029828491c9b6e7fabb1cace97b0a7c731490239b63e0f773f0b9a918"
+checksum = "ae0874963b5a86bbb1ff763b6cf95ed62b8aea43aab9c52e76a97041141d346c"
 dependencies = [
  "axum",
  "axum-extra",
@@ -4696,9 +4696,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-opendal"
-version = "0.2.0"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b99cbd6a388b50b7f3254e9ef85a2ee3b48ec69abc2fdc4329dc83252d6458d7"
+checksum = "545e6580e78c4c2a1f14e2fa004c534486b6b33983502b22708dc7855cda4b79"
 dependencies = [
  "dirs",
  "opendal",
@@ -4713,9 +4713,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-performance"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d19398d032ce91d1d1421a7914d9dd3fcb5b789c71938cf053fc40d2f246f83d"
+checksum = "1c6c94afb23bdbeed9aa08fcaab2d405cbbbd4ced0d0b58f5a9850b2bbbadf3e"
 dependencies = [
  "cached",
  "serde",
@@ -4724,9 +4724,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-router-common"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d43006aad1ce6bff86d10aff8718621d030e48385ca2516b89bd03a31dcf352"
+checksum = "3f9440d86eb9dec81210fe13e3b50c5ebbf7fd59d1cf6db1ff78937499f6cf4c"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -4746,9 +4746,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-scheduler"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69ca7505ab5b9d79cdd680c223d5b17c704d2467a4fd878a5df7ad5e17ab8fb3"
+checksum = "5c685d6c70161de9699f444c4489d374252557ce9cff5833498498c10580d7bc"
 dependencies = [
  "dashmap",
  "snafu",
@@ -4759,9 +4759,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-state"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "049c957aa576cb1a0dcc12ab5144335ec727a0b6e82792fe4c581436f6ce18e5"
+checksum = "8f6d30a87478c269441362d26e8a2bfda338bc8c9236f09c022534fa066a3e39"
 dependencies = [
  "arc-swap",
  "tokio",
@@ -4769,9 +4769,9 @@ dependencies = [
 
 [[package]]
 name = "tibba-util"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "799101078daf4b6793d67b592b836d901562729be469335e3038b81cb6603f08"
+checksum = "39f65fa9e65474b277bd0106023a5bf9fda25299368a4b1206e516bfd77a33c6"
 dependencies = [
  "axum",
  "axum-extra",
