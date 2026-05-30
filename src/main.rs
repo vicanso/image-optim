@@ -22,6 +22,7 @@ mod config;
 mod dal;
 mod image;
 mod image_task;
+mod preset;
 mod router;
 mod state;
 

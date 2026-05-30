@@ -16,7 +16,7 @@ use crate::config::must_get_config;
 use crate::dal::{get_opendal_storage, get_opendal_storage_by_name};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use cached::proc_macro::cached;
+use cached::macros::cached;
 use imageoptimize::{
     ProcessImage, new_blur_task, new_brighten_task, new_contrast_task, new_crop_task,
     new_diff_task, new_fit_task, new_flip_task, new_gray_task, new_optim_task, new_padding_task,
@@ -222,7 +222,7 @@ pub enum Op {
     },
 }
 
-#[cached(size = 1000, time = 1800, result = true, sync_writes = "by_key")]
+#[cached(size = 1000, ttl = 1800, result = true, sync_writes = "by_key")]
 pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult, bool)> {
     let optim_config = get_default_optim_params();
     let mut output_type = params.output_type;

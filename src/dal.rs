@@ -110,7 +110,7 @@ impl Task for DalTask {
     }
 }
 
-#[ctor]
+#[ctor(unsafe)]
 fn init() {
     register_task("dal", Arc::new(DalTask));
 }

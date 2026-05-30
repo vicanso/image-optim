@@ -122,7 +122,7 @@ impl Task for ConfigTask {
 }
 
 // add application init before application start
-#[ctor]
+#[ctor(unsafe)]
 fn init() {
     register_task("config", Arc::new(ConfigTask));
 }

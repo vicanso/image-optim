@@ -16,9 +16,11 @@ use crate::image_task::{
     AUTO_OUTPUT_TYPE, ImageTaskParams, ImageTaskResult, Op, get_default_optim_params,
     run_image_pipeline, run_image_task,
 };
+use crate::preset::get_preset;
 use axum::Json;
 use axum::Router;
 use axum::body::Body;
+use axum::extract::Query;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -27,7 +29,8 @@ use base64::engine::general_purpose::STANDARD;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+use std::str::FromStr;
 use tibba_error::Error;
 use tibba_util::QueryParams;
 use validator::{Validate, ValidationError};
@@ -601,6 +604,185 @@ curl -X POST http://127.0.0.1:3000/images/process \
     Ok(command.to_string())
 }
 
+// ── preset ───────────────────────────────────────────────────────────────────
+
+fn bad_request<S: Into<String>>(msg: S) -> Error {
+    Error::new(msg.into())
+        .with_category("preset")
+        .with_status(400)
+}
+
+/// 从字符串解析为类型 T，失败时返回 400。空字符串视为缺省（None）。
+fn parse_opt<T: FromStr>(raw: Option<&String>, key: &str) -> Result<Option<T>>
+where
+    T::Err: std::fmt::Display,
+{
+    match raw {
+        None => Ok(None),
+        Some(v) if v.is_empty() => Ok(None),
+        Some(v) => v
+            .parse::<T>()
+            .map(Some)
+            .map_err(|e| bad_request(format!("invalid `{key}`: {e}"))),
+    }
+}
+
+fn parse_bool(raw: Option<&String>) -> bool {
+    matches!(
+        raw.map(|s| s.to_lowercase()).as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+/// 把 `merged` 中的通用调整字段（rotate/flip/gray/...）写入 task。
+fn apply_adjust(task: &mut ImageTaskParams, merged: &BTreeMap<String, String>) -> Result<()> {
+    task.source = merged
+        .get("source")
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+    task.rotate = parse_opt::<u16>(merged.get("rotate"), "rotate")?;
+    task.flip = merged.get("flip").cloned().filter(|s| !s.is_empty());
+    task.gray = parse_bool(merged.get("gray"));
+    task.sharpen = merged.get("sharpen").cloned().filter(|s| !s.is_empty());
+    task.blur = merged.get("blur").cloned().filter(|s| !s.is_empty());
+    task.brighten = parse_opt::<i32>(merged.get("brighten"), "brighten")?;
+    task.contrast = merged.get("contrast").cloned().filter(|s| !s.is_empty());
+    task.strip = parse_bool(merged.get("strip"));
+    task.padding_width = parse_opt::<u32>(merged.get("padding_width"), "padding_width")?;
+    task.padding_height = parse_opt::<u32>(merged.get("padding_height"), "padding_height")?;
+    task.padding_color = merged
+        .get("padding_color")
+        .cloned()
+        .filter(|s| !s.is_empty());
+    Ok(())
+}
+
+fn validate_output_type(merged: &BTreeMap<String, String>) -> Result<Option<String>> {
+    let Some(raw) = merged.get("output_type") else {
+        return Ok(None);
+    };
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    if !["jpeg", "jpg", "png", "webp", "avif", AUTO_OUTPUT_TYPE].contains(&raw.as_str()) {
+        return Err(bad_request(format!("invalid `output_type`: {raw}")));
+    }
+    Ok(Some(raw.clone()))
+}
+
+/// 按 `op` 从合并后的参数表构造 ImageTaskParams。请求侧覆盖预设侧已在调用前完成。
+fn build_task(
+    op: &str,
+    merged: &BTreeMap<String, String>,
+    headers: &HeaderMap,
+) -> Result<ImageTaskParams> {
+    let file = merged
+        .get("file")
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| bad_request("missing `file`"))?
+        .clone();
+    if file.len() < 5 {
+        return Err(bad_request("`file` length must be >= 5"));
+    }
+
+    let output_type = validate_output_type(merged)?;
+    let quality = parse_opt::<u8>(merged.get("quality"), "quality")?;
+    let auto_output_type = get_auto_output_type(&output_type, headers);
+
+    let mut task = ImageTaskParams {
+        file,
+        output_type,
+        quality,
+        auto_output_type,
+        ..Default::default()
+    };
+
+    match op {
+        "optim" => {}
+        "resize" => {
+            let w = parse_opt::<u32>(merged.get("width"), "width")?.unwrap_or(0);
+            let h = parse_opt::<u32>(merged.get("height"), "height")?.unwrap_or(0);
+            if w == 0 && h == 0 {
+                return Err(bad_request("resize: `width` and `height` cannot both be 0"));
+            }
+            task.width = Some(w);
+            task.height = Some(h);
+        }
+        "fit" => {
+            let w = parse_opt::<u32>(merged.get("width"), "width")?.unwrap_or(0);
+            let h = parse_opt::<u32>(merged.get("height"), "height")?.unwrap_or(0);
+            if w == 0 && h == 0 {
+                return Err(bad_request("fit: `width` and `height` cannot both be 0"));
+            }
+            task.fit_width = Some(w);
+            task.fit_height = Some(h);
+        }
+        "watermark" => {
+            let wm = merged
+                .get("watermark")
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| bad_request("watermark: missing `watermark`"))?
+                .clone();
+            if wm.len() < 5 {
+                return Err(bad_request("watermark: `watermark` length must be >= 5"));
+            }
+            task.watermark = Some(wm);
+            task.position = merged.get("position").cloned().filter(|s| !s.is_empty());
+            task.margin_left = parse_opt::<i32>(merged.get("margin_left"), "margin_left")?;
+            task.margin_top = parse_opt::<i32>(merged.get("margin_top"), "margin_top")?;
+        }
+        "crop" => {
+            let w = parse_opt::<u32>(merged.get("width"), "width")?
+                .ok_or_else(|| bad_request("crop: missing `width`"))?;
+            let h = parse_opt::<u32>(merged.get("height"), "height")?
+                .ok_or_else(|| bad_request("crop: missing `height`"))?;
+            task.width = Some(w);
+            task.height = Some(h);
+            task.x = Some(parse_opt::<u32>(merged.get("x"), "x")?.unwrap_or(0));
+            task.y = Some(parse_opt::<u32>(merged.get("y"), "y")?.unwrap_or(0));
+        }
+        "padding" => {
+            let w = parse_opt::<u32>(merged.get("width"), "width")?
+                .ok_or_else(|| bad_request("padding: missing `width`"))?;
+            let h = parse_opt::<u32>(merged.get("height"), "height")?
+                .ok_or_else(|| bad_request("padding: missing `height`"))?;
+            task.padding_width = Some(w);
+            task.padding_height = Some(h);
+            task.padding_color = merged.get("color").cloned().filter(|s| !s.is_empty());
+        }
+        other => return Err(bad_request(format!("unknown preset op: {other}"))),
+    }
+
+    apply_adjust(&mut task, merged)?;
+    Ok(task)
+}
+
+async fn preset(
+    Query(req): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<ImagePreview> {
+    let name = req
+        .get("preset")
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| bad_request("missing `preset`"))?;
+
+    let preset =
+        get_preset(&name).ok_or_else(|| bad_request(format!("preset not found: {name}")))?;
+
+    // 合并：先放预设默认值，再用请求参数覆盖（请求侧 > 预设侧）。
+    let mut merged = preset.params.clone();
+    for (k, v) in req {
+        if k == "preset" {
+            continue;
+        }
+        merged.insert(k.to_lowercase(), v);
+    }
+
+    let task = build_task(&preset.op, &merged, &headers)?;
+    Ok(run_image_task(task).await?.into())
+}
+
 // ── router ───────────────────────────────────────────────────────────────────
 
 pub fn new_image_router() -> Router {
@@ -611,6 +793,7 @@ pub fn new_image_router() -> Router {
         .route("/watermark", get(watermark))
         .route("/crop", get(crop))
         .route("/padding", get(padding))
+        .route("/preset", get(preset))
         .route("/process", post(process))
         .route("/command", get(command))
 }

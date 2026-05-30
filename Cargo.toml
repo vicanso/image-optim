@@ -13,9 +13,9 @@ unwrap_used = "deny"
 axum = { version = "0.8.9", features = ["multipart"] }
 axum-extra = { version = "0.12.6", features = ["cookie", "cookie-signed"] }
 base64 = "0.22.1"
-cached = { version = "0.59.0", features = ["async"] }
-ctor = "0.10.1"
-imageoptimize = "0.5.0"
+cached = { version = "1.1.0", features = ["async", "proc_macro"] }
+ctor = "1.0.7"
+imageoptimize = "0.5.3"
 mime = "0.3.17"
 mime_guess = "2.0.5"
 num_cpus = "1.17.0"
@@ -34,7 +34,7 @@ tibba-scheduler = "0.2.2"
 tibba-state = "0.2.2"
 tibba-util = "0.2.2"
 time = "0.3.47"
-tokio = { version = "1.52.1", features = [
+tokio = { version = "1.52.3", features = [
     "macros",
     "rt",
     "rt-multi-thread",

@@ -11,13 +11,17 @@
 - `IMOP_OPENDAL_<NAME>_URL`: 命名 OpenDAL 存储源（可配置多个），名字大小写不敏感。请求时通过 `?source=<NAME>` 选择对应源；不传 `source` 时使用默认存储。例如：
   - `IMOP_OPENDAL_USERS_URL=file:///opt/images/users`
   - `IMOP_OPENDAL_BAIDU_URL=https://www.baidu.com`
-  - 调用：`/images/optim?source=BAIDU&file=image.jpg` 从 `baidu` 源读取 `https://www.baidu.com/image.jpg`
+  - 调用：`/images/optim?source=baidu&file=image.jpg` 从 `baidu` 源读取 `https://www.baidu.com/image.jpg`
 - `IMOP_OPTIM_QUALITY`: 图片压缩质量（全格式默认值），默认 80
 - `IMOP_OPTIM_QUALITY_JPEG`: JPEG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
 - `IMOP_OPTIM_QUALITY_PNG`: PNG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
 - `IMOP_OPTIM_QUALITY_WEBP`: WebP 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
 - `IMOP_OPTIM_QUALITY_AVIF`: AVIF 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
 - `IMOP_OPTIM_SPEED`: 图片压缩速度，默认 3
+- `IMOP_PRESET_<NAME>`: 命名预设（可配置多个），名字大小写不敏感。值格式：`<op>&<key>=<value>&...`，其中 `<op>` ∈ `optim` / `resize` / `fit` / `watermark` / `crop` / `padding`。例如：
+  - `IMOP_PRESET_THUMB=fit&width=300&quality=70`
+  - `IMOP_PRESET_LOGOSTRIP=optim&strip=true`
+  - 调用：`/images/preset?preset=thumb&file=photo.jpg`，请求侧参数可覆盖预设默认值（如 `&quality=90`）
 
 ```bash
 docker run -d \
@@ -40,9 +44,26 @@ docker run -d \
 
 ### 通用参数
 
-所有图片处理接口（`optim` / `resize` / `fit` / `watermark` / `crop` / `padding`）都支持以下通用参数：
+所有图片处理 GET 接口（`optim` / `resize` / `fit` / `watermark` / `crop` / `padding` / `preset`）都支持以下通用参数：
 
-- `source` (可选): 选择 OpenDAL 存储源名（对应 `IMOP_OPENDAL_<NAME>_URL`），名字大小写不敏感；未提供时使用默认 `IMOP_OPENDAL_URL`。`watermark` 端点的水印文件也从同一存储源读取。
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `source` | 选择命名 OpenDAL 存储源（对应 `IMOP_OPENDAL_<NAME>_URL`），名字大小写不敏感；未提供时使用默认 `IMOP_OPENDAL_URL`。`watermark` 端点的水印文件也从同一源读取 | `source=users` |
+| `output_type` | 输出格式：`jpeg` `png` `webp` `avif` `auto`；`auto` 会根据请求的 `Accept` 头协商 | `output_type=webp` |
+| `quality` | 压缩质量 0-100，默认取配置 `optim.quality_<format>` 或 `optim.quality` | `quality=85` |
+| `rotate` | 旋转角度：`90` / `180` / `270` | `rotate=90` |
+| `flip` | 翻转方向：`h` / `horizontal` 或 `v` / `vertical` | `flip=h` |
+| `gray` | 转灰度图 | `gray=true` |
+| `sharpen` | USM 锐化，格式 `sigma` 或 `sigma,threshold` | `sharpen=1.0` |
+| `blur` | 高斯模糊 sigma | `blur=2.0` |
+| `brighten` | 亮度调整，正数增亮、负数减暗 | `brighten=20` |
+| `contrast` | 对比度，浮点字符串 | `contrast=1.5` |
+| `strip` | 剥离 EXIF 元数据（不重新编码） | `strip=true` |
+| `padding_width` | 画布扩展宽度（像素），与 `padding_height` 配合使用 | `padding_width=1000` |
+| `padding_height` | 画布扩展高度（像素） | `padding_height=1000` |
+| `padding_color` | 画布填充色，十六进制（如 `#ffffff` 或 `#ffffff80`），默认透明 | `padding_color=%23ffffff` |
+
+> 运行时也可通过 `GET /images/command` 获取完整的 Markdown API 文档（包含上述所有参数及示例）。
 
 ### 1. 图片优化 (`/images/optim`)
 
@@ -102,7 +123,33 @@ curl "http://127.0.0.1:3000/images/resize?file=images/photo.jpg&width=1024&heigh
 
 ---
 
-### 3. 图片水印 (`/images/watermark`)
+### 3. 适应缩放 (`/images/fit`)
+
+缩放至不超过给定的 `width` × `height` 边界，保持原始宽高比，不放大原图。与 `resize` 的关键区别：若原图已在边界内则不做任何缩放。
+
+**请求方式**: `GET /images/fit`
+
+**Query 参数**:
+- `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
+- `width` (可选): 边界宽度（像素），默认 0
+- `height` (可选): 边界高度（像素），默认 0
+- `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+
+**注意事项**:
+- `width` 和 `height` 不能同时为 0
+- 仅在原图任一边超过边界时才会缩放
+- 缩放后会自动进行图片优化处理
+
+**示例**:
+```bash
+# 在 800x600 边界内适应缩放
+curl "http://127.0.0.1:3000/images/fit?file=images/photo.jpg&width=800&height=600"
+```
+
+---
+
+### 4. 图片水印 (`/images/watermark`)
 
 为存储中的图片添加水印。
 
@@ -132,7 +179,7 @@ curl "http://127.0.0.1:3000/images/watermark?file=images/photo.jpg&watermark=wat
 
 ---
 
-### 4. 图片裁剪 (`/images/crop`)
+### 5. 图片裁剪 (`/images/crop`)
 
 按指定区域裁剪图片。
 
@@ -158,6 +205,136 @@ curl "http://127.0.0.1:3000/images/crop?file=images/photo.jpg&x=100&y=100&width=
 
 # 从左上角裁剪 800x600 的区域
 curl "http://127.0.0.1:3000/images/crop?file=images/photo.jpg&width=800&height=600&quality=85"
+```
+
+---
+
+### 6. 画布填充 (`/images/padding`)
+
+将原图居中放置，并将画布扩展至指定尺寸，扩展区域填充指定颜色（默认透明）。
+
+**请求方式**: `GET /images/padding`
+
+**Query 参数**:
+- `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
+- `width` (必填): 目标画布宽度（像素）
+- `height` (必填): 目标画布高度（像素）
+- `color` (可选): 填充色，十六进制字符串（如 `#ffffff` 或 `#ffffff80`，URL 中 `#` 需编码为 `%23`），默认透明
+- `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+
+**示例**:
+```bash
+# 扩展画布到 1000x1000，白底
+curl "http://127.0.0.1:3000/images/padding?file=images/photo.jpg&width=1000&height=1000&color=%23ffffff"
+
+# 扩展画布并输出为 webp
+curl "http://127.0.0.1:3000/images/padding?file=images/photo.jpg&width=1200&height=800&output_type=webp"
+```
+
+---
+
+### 7. 流水线处理 (`/images/process`)
+
+以 JSON 方式提交 Base64 编码的图片数据，按 `ops` 数组顺序执行任意组合操作，返回 Base64 编码的处理结果。适用于不依赖 OpenDAL 存储的临时处理场景。
+
+**请求方式**: `POST /images/process`
+
+**请求头**: `Content-Type: application/json`
+
+**请求体字段**:
+- `data` (必填): Base64 编码的原始图片二进制
+- `ext` (必填): 原始图片格式扩展名（如 `jpg`、`png`、`webp`、`avif`）
+- `ops` (可选): 操作数组；若不包含 `optim`，最后会自动追加一次默认编码
+
+**支持的 `ops` 操作类型**（`type` 字段）:
+
+| type | 参数 |
+|------|------|
+| `fit` | `width`, `height` |
+| `resize` | `width`, `height` |
+| `crop` | `x`, `y`, `width`, `height` |
+| `rotate` | `deg`（90 / 180 / 270） |
+| `flip` | `dir`（h / v） |
+| `gray` | — |
+| `sharpen` | `sigma`, `threshold`（默认 0） |
+| `blur` | `sigma` |
+| `brighten` | `value` |
+| `contrast` | `value` |
+| `strip` | — |
+| `padding` | `width`, `height`, `color`（默认透明） |
+| `watermark` | `data`（Base64 水印图）, `position`, `margin_left`, `margin_top` |
+| `optim` | `output_type`, `quality` |
+
+**响应字段**:
+- `data`: Base64 编码的处理后图片
+- `ext`: 实际输出格式扩展名
+- `ratio`: 压缩率百分比（处理后 / 原始大小，最低 1）
+- `diff`: DSSIM 差异值（仅纯优化场景有意义）
+
+**示例**:
+```bash
+curl -X POST http://127.0.0.1:3000/images/process \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": "<base64-image>",
+    "ext": "jpg",
+    "ops": [
+      {"type": "fit", "width": 800, "height": 600},
+      {"type": "sharpen", "sigma": 1.0},
+      {"type": "optim", "output_type": "webp", "quality": 80}
+    ]
+  }'
+```
+
+---
+
+### 8. 命令文档 (`/images/command`)
+
+返回完整的 Markdown 格式 API 文档，可在运行时查阅最新接口与参数说明。
+
+**请求方式**: `GET /images/command`
+
+**响应**: `text/plain` 格式的 Markdown 文本。
+
+**示例**:
+```bash
+curl http://127.0.0.1:3000/images/command
+```
+
+---
+
+### 9. 预设处理 (`/images/preset`)
+
+通过环境变量 `IMOP_PRESET_<NAME>` 预先定义"操作 + 参数"组合，请求侧只需选择预设名 + 文件路径即可，便于前端/CDN 规范化 URL（同一份缩略图永远同一个 URL）。
+
+**预设格式**: `IMOP_PRESET_<NAME>=<op>&<key>=<value>&...`
+- `<op>` ∈ `optim` / `resize` / `fit` / `watermark` / `crop` / `padding`
+- 名字大小写不敏感
+- 启动时无效预设会记录 warn 并跳过，不阻断启动
+
+**请求方式**: `GET /images/preset`
+
+**Query 参数**:
+- `preset` (必填): 预设名（对应 `IMOP_PRESET_<NAME>`），大小写不敏感
+- `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
+- 其余参数 (可选): 任意通用参数或预设字段。**请求侧值会覆盖预设默认值**
+
+**示例**:
+```bash
+# 启动时配置
+export IMOP_PRESET_THUMB="fit&width=300&quality=70"
+export IMOP_PRESET_LOGOSTRIP="optim&strip=true"
+export IMOP_PRESET_SQUARE="padding&width=1000&height=1000&color=%23ffffff"
+
+# 调用：使用预设默认值
+curl "http://127.0.0.1:3000/images/preset?preset=thumb&file=images/photo.jpg"
+
+# 调用：覆盖预设的 quality
+curl "http://127.0.0.1:3000/images/preset?preset=thumb&file=images/photo.jpg&quality=90"
+
+# 调用：从命名存储源读取
+curl "http://127.0.0.1:3000/images/preset?preset=thumb&file=photo.jpg&source=users"
 ```
 
 ---
