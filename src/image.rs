@@ -92,7 +92,7 @@ impl IntoResponse for ImagePreview {
 }
 
 fn x_output_type(output_type: &str) -> Result<(), ValidationError> {
-    if ["jpeg", "jpg", "png", "webp", "avif", AUTO_OUTPUT_TYPE].contains(&output_type) {
+    if ["jpeg", "jpg", "png", "webp", "avif", "jxl", AUTO_OUTPUT_TYPE].contains(&output_type) {
         return Ok(());
     }
     Err(ValidationError::new("output_type").with_message("invalid output type".into()))
@@ -664,7 +664,7 @@ fn validate_output_type(merged: &BTreeMap<String, String>) -> Result<Option<Stri
     if raw.is_empty() {
         return Ok(None);
     }
-    if !["jpeg", "jpg", "png", "webp", "avif", AUTO_OUTPUT_TYPE].contains(&raw.as_str()) {
+    if !["jpeg", "jpg", "png", "webp", "avif", "jxl", AUTO_OUTPUT_TYPE].contains(&raw.as_str()) {
         return Err(bad_request(format!("invalid `output_type`: {raw}")));
     }
     Ok(Some(raw.clone()))

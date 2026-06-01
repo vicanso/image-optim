@@ -61,14 +61,23 @@ jobs:
       - name: Build and push
         id: docker_build
         uses: docker/build-push-action@v6
+        env:
+          IMAGE_OUTPUT: type=image,name=${{ env.IMAGE_NAME }}:${{ matrix.platform.tag }},push=true
+          # compression=zstd encodes the layers BuildKit builds itself (our app
+          # layer) with zstd. force-compression=false leaves already-compressed
+          # inherited layers — the ubuntu:24.04 base — in their upstream gzip
+          # form, so those blobs stay shared/deduplicated across ubuntu images
+          # and aren't needlessly re-encoded and re-pushed every build.
+          # oci-mediatypes=true is required for the registry and clients to
+          # recognise the zstd layers.
+          ZSTD_OPTS: compression=zstd,compression-level=3,force-compression=false,oci-mediatypes=true
         with:
           context: .
           file: ./Dockerfile
           platforms: ${{ matrix.platform.arch }}
           build-args: |
             GIT_COMMIT_ID=${{ github.sha }}
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.platform.tag }}
-          push: true
+          outputs: ${{ env.IMAGE_OUTPUT }},${{ env.ZSTD_OPTS }}
       - name: Image digest
         run: |
           echo ${{ steps.docker_build.outputs.digest }}

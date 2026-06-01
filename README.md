@@ -49,7 +49,7 @@ docker run -d \
 | 参数 | 说明 | 示例 |
 |------|------|------|
 | `source` | 选择命名 OpenDAL 存储源（对应 `IMOP_OPENDAL_<NAME>_URL`），名字大小写不敏感；未提供时使用默认 `IMOP_OPENDAL_URL`。`watermark` 端点的水印文件也从同一源读取 | `source=users` |
-| `output_type` | 输出格式：`jpeg` `png` `webp` `avif` `auto`；`auto` 会根据请求的 `Accept` 头协商 | `output_type=webp` |
+| `output_type` | 输出格式：`jpeg` `png` `webp` `avif` `jxl` `auto`；`auto` 会根据请求的 `Accept` 头协商。⚠️ `jxl` 会丢弃 alpha 通道（libjxl 0.11 / jpegxl-rs 0.11 限制） | `output_type=webp` |
 | `quality` | 压缩质量 0-100，默认取配置 `optim.quality_<format>` 或 `optim.quality` | `quality=85` |
 | `rotate` | 旋转角度：`90` / `180` / `270` | `rotate=90` |
 | `flip` | 翻转方向：`h` / `horizontal` 或 `v` / `vertical` | `flip=h` |
@@ -73,7 +73,7 @@ docker run -d \
 
 **Query 参数**:
 - `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`jxl`、`auto`，默认保持原格式（`jxl` 会丢弃 alpha）
 - `quality` (可选): 图片压缩质量，范围 0-100，默认值为配置中的 `optim.quality`（默认 80）
 
 **返回头部**:
@@ -104,7 +104,7 @@ curl "http://127.0.0.1:3000/images/optim?file=images/photo.png"
 - `width` (可选): 目标宽度（像素），默认 0
 - `height` (可选): 目标高度（像素），默认 0
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`jxl`、`auto`，默认保持原格式（`jxl` 会丢弃 alpha）
 
 **注意事项**:
 - `width` 和 `height` 不能同时为 0
@@ -134,7 +134,7 @@ curl "http://127.0.0.1:3000/images/resize?file=images/photo.jpg&width=1024&heigh
 - `width` (可选): 边界宽度（像素），默认 0
 - `height` (可选): 边界高度（像素），默认 0
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`jxl`、`auto`，默认保持原格式（`jxl` 会丢弃 alpha）
 
 **注意事项**:
 - `width` 和 `height` 不能同时为 0
@@ -162,7 +162,7 @@ curl "http://127.0.0.1:3000/images/fit?file=images/photo.jpg&width=800&height=60
 - `margin_left` (可选): 水印左边距（像素），默认 0
 - `margin_top` (可选): 水印上边距（像素），默认 0
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`jxl`、`auto`，默认保持原格式（`jxl` 会丢弃 alpha）
 
 **说明**:
 - 水印图片会被 Base64 编码后传递给图片处理库
@@ -192,7 +192,7 @@ curl "http://127.0.0.1:3000/images/watermark?file=images/photo.jpg&watermark=wat
 - `width` (必填): 裁剪宽度（像素）
 - `height` (必填): 裁剪高度（像素）
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`jxl`、`auto`，默认保持原格式（`jxl` 会丢弃 alpha）
 
 **说明**:
 - 裁剪后会自动进行图片优化处理
@@ -221,7 +221,7 @@ curl "http://127.0.0.1:3000/images/crop?file=images/photo.jpg&width=800&height=6
 - `height` (必填): 目标画布高度（像素）
 - `color` (可选): 填充色，十六进制字符串（如 `#ffffff` 或 `#ffffff80`，URL 中 `#` 需编码为 `%23`），默认透明
 - `quality` (可选): 图片压缩质量，默认值为配置中的 `optim.quality`（默认 80）
-- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`auto`，默认保持原格式
+- `output_type` (可选): 输出图片格式，支持 `jpeg`、`png`、`webp`、`avif`、`jxl`、`auto`，默认保持原格式（`jxl` 会丢弃 alpha）
 
 **示例**:
 ```bash

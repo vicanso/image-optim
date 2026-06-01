@@ -53,6 +53,7 @@ pub struct OptimConfig {
     pub quality_png: Option<u8>,
     pub quality_webp: Option<u8>,
     pub quality_avif: Option<u8>,
+    pub quality_jxl: Option<u8>,
     #[serde(default = "default_speed")]
     pub speed: u8,
     #[serde(default = "default_max_age", with = "humantime_serde")]
@@ -67,6 +68,7 @@ impl OptimConfig {
             "png" => self.quality_png.unwrap_or(self.quality),
             "webp" => self.quality_webp.unwrap_or(self.quality),
             "avif" => self.quality_avif.unwrap_or(self.quality),
+            "jxl" => self.quality_jxl.unwrap_or(self.quality),
             _ => self.quality,
         }
     }
@@ -86,6 +88,7 @@ pub fn get_default_optim_params() -> &'static OptimConfig {
                 quality_png: None,
                 quality_webp: None,
                 quality_avif: None,
+                quality_jxl: None,
                 speed: 3,
                 max_age: default_max_age(),
                 auto_output_types: vec![],
