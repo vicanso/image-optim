@@ -18,6 +18,7 @@ use crate::guard;
 use crate::metrics;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use bytes::Bytes;
 use cached::macros::cached;
 use imageoptimize::{
     ProcessImage, new_blur_task, new_brighten_task, new_contrast_task, new_crop_task,
@@ -268,7 +269,12 @@ pub struct ImageTaskParams {
 
 #[derive(Default, Clone, Debug)]
 pub struct ImageTaskResult {
-    pub buffer: Vec<u8>,
+    /// Encoded image bytes. Backed by `bytes::Bytes` so `cached` LRU hits
+    /// clone the buffer with an Arc bump instead of a full memcpy — at
+    /// ~1k cached requests/sec on a 200 KiB output that saves ~200 MiB/s
+    /// of pointless memory traffic. Body::from(Bytes) is also zero-copy
+    /// all the way to hyper.
+    pub buffer: Bytes,
     pub original_size: usize,
     pub ext: String,
     pub diff: f64,
@@ -506,7 +512,7 @@ async fn run_image_task_inner(params: ImageTaskParams) -> Result<(ImageTaskResul
     }
 
     img = run_image_blocking(img, tasks).await?;
-    let buffer = img.get_buffer().map_err(map_err)?.to_vec();
+    let buffer = Bytes::from(img.get_buffer().map_err(map_err)?.to_vec());
     Ok((
         ImageTaskResult {
             buffer,
@@ -611,7 +617,7 @@ pub async fn run_image_pipeline(data: Vec<u8>, ext: &str, ops: Vec<Op>) -> Resul
     }
 
     img = run_image_blocking(img, tasks).await?;
-    let buffer = img.get_buffer().map_err(map_err)?.to_vec();
+    let buffer = Bytes::from(img.get_buffer().map_err(map_err)?.to_vec());
     metrics::record_output_bytes(&img.ext, buffer.len() as u64);
     metrics::record_task_duration(&img.ext, started.elapsed().as_secs_f64());
     metrics::record_dssim(&img.ext, img.diff);

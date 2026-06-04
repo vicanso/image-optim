@@ -13,6 +13,7 @@ unwrap_used = "deny"
 axum = { version = "0.8.9", features = ["multipart"] }
 axum-extra = { version = "0.12.6", features = ["cookie", "cookie-signed"] }
 base64 = "0.22.1"
+bytes = "1.11.1"
 cached = { version = "1.1.0", features = ["async", "proc_macro"] }
 ctor = "1.0.7"
 imageoptimize = "0.5.3"
