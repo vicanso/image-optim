@@ -108,10 +108,7 @@ fn map_err(err: impl ToString) -> Error {
 /// CPU-bound) can't starve the tokio I/O workers. imageoptimize 0.5.3 only
 /// inserts `block_in_place` when its `bin` feature is enabled, and that
 /// feature drags in clap/glob/num_cpus we don't want, so we wrap it here.
-async fn run_image_blocking(
-    image: ProcessImage,
-    tasks: Vec<Vec<String>>,
-) -> Result<ProcessImage> {
+async fn run_image_blocking(image: ProcessImage, tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
     let handle = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || handle.block_on(run_with_image(image, tasks)))
         .await

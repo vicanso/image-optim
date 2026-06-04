@@ -2121,8 +2121,6 @@ dependencies = [
  "imageoptimize",
  "metrics",
  "metrics-exporter-prometheus",
- "mime",
- "mime_guess",
  "num_cpus",
  "once_cell",
  "regex",

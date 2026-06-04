@@ -17,8 +17,6 @@ bytes = "1.11.1"
 cached = { version = "1.1.0", features = ["async", "proc_macro"] }
 ctor = "1.0.7"
 imageoptimize = "0.5.3"
-mime = "0.3.17"
-mime_guess = "2.0.5"
 num_cpus = "1.17.0"
 metrics = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }

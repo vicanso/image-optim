@@ -29,7 +29,7 @@ use base64::engine::general_purpose::STANDARD;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
 use tibba_error::Error;
 use tibba_util::QueryParams;
@@ -39,6 +39,40 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 static ACCEPT_IMAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"image/([^,;]+)").expect("invalid regex"));
+
+/// `Content-Type` per output format. Built once; lookup → clone is a
+/// HeaderValue Bytes ref-count bump. Covers every format imageoptimize
+/// can actually emit (see OptimProcess); unknown ext falls back to
+/// `image/jpeg`, matching the imageoptimize encoder's own fallback.
+static CONTENT_TYPES: Lazy<HashMap<&'static str, HeaderValue>> = Lazy::new(|| {
+    let mut m = HashMap::with_capacity(8);
+    let jpeg = HeaderValue::from_static("image/jpeg");
+    m.insert("jpeg", jpeg.clone());
+    m.insert("jpg", jpeg);
+    m.insert("png", HeaderValue::from_static("image/png"));
+    m.insert("webp", HeaderValue::from_static("image/webp"));
+    m.insert("avif", HeaderValue::from_static("image/avif"));
+    m.insert("jxl", HeaderValue::from_static("image/jxl"));
+    m.insert("gif", HeaderValue::from_static("image/gif"));
+    m
+});
+
+static CONTENT_TYPE_FALLBACK: Lazy<HeaderValue> =
+    Lazy::new(|| HeaderValue::from_static("image/jpeg"));
+
+/// `Cache-Control` precomputed from `optim.max_age`. Built on first request
+/// (after config is loaded); subsequent requests pay only an Arc bump.
+static CACHE_PUBLIC: Lazy<HeaderValue> = Lazy::new(|| {
+    let max_age = get_default_optim_params().max_age.as_secs();
+    HeaderValue::from_str(&format!("public, max-age={max_age}"))
+        .expect("cache-control header value")
+});
+
+static CACHE_PRIVATE: Lazy<HeaderValue> = Lazy::new(|| {
+    let max_age = get_default_optim_params().max_age.as_secs();
+    HeaderValue::from_str(&format!("private, max-age={max_age}"))
+        .expect("cache-control header value")
+});
 
 struct ImagePreview {
     image: ImageTaskResult,
@@ -61,30 +95,28 @@ impl IntoResponse for ImagePreview {
 
         let ratio = (100 * buffer.len() / img.original_size).max(1);
         let mut res = Body::from(buffer).into_response();
+        let headers = res.headers_mut();
 
-        let result = mime_guess::from_ext(&img.ext).first_or(mime::IMAGE_JPEG);
-        if let Ok(value) = HeaderValue::from_str(result.as_ref()) {
-            res.headers_mut().insert(header::CONTENT_TYPE, value);
-        }
+        let ct = CONTENT_TYPES
+            .get(img.ext.as_str())
+            .cloned()
+            .unwrap_or_else(|| CONTENT_TYPE_FALLBACK.clone());
+        headers.insert(header::CONTENT_TYPE, ct);
 
-        let max_age = get_default_optim_params().max_age.as_secs();
-        let cache_type = if self.cache_private {
-            "private"
+        let cc = if self.cache_private {
+            CACHE_PRIVATE.clone()
         } else {
-            "public"
+            CACHE_PUBLIC.clone()
         };
-        if let Ok(value) =
-            HeaderValue::from_str(format!("{cache_type}, max-age={max_age}").as_str())
-        {
-            res.headers_mut().insert(header::CACHE_CONTROL, value);
-        }
+        headers.insert(header::CACHE_CONTROL, cc);
+
         if img.diff >= 0.0f64
             && let Ok(value) = HeaderValue::from_str(&format!("{:.2}", img.diff))
         {
-            res.headers_mut().insert("X-Dssim-Diff", value);
+            headers.insert("X-Dssim-Diff", value);
         }
         if let Ok(value) = HeaderValue::from_str(ratio.to_string().as_str()) {
-            res.headers_mut().insert("X-Ratio", value);
+            headers.insert("X-Ratio", value);
         }
 
         res
@@ -92,7 +124,17 @@ impl IntoResponse for ImagePreview {
 }
 
 fn x_output_type(output_type: &str) -> Result<(), ValidationError> {
-    if ["jpeg", "jpg", "png", "webp", "avif", "jxl", AUTO_OUTPUT_TYPE].contains(&output_type) {
+    if [
+        "jpeg",
+        "jpg",
+        "png",
+        "webp",
+        "avif",
+        "jxl",
+        AUTO_OUTPUT_TYPE,
+    ]
+    .contains(&output_type)
+    {
         return Ok(());
     }
     Err(ValidationError::new("output_type").with_message("invalid output type".into()))
@@ -664,7 +706,17 @@ fn validate_output_type(merged: &BTreeMap<String, String>) -> Result<Option<Stri
     if raw.is_empty() {
         return Ok(None);
     }
-    if !["jpeg", "jpg", "png", "webp", "avif", "jxl", AUTO_OUTPUT_TYPE].contains(&raw.as_str()) {
+    if ![
+        "jpeg",
+        "jpg",
+        "png",
+        "webp",
+        "avif",
+        "jxl",
+        AUTO_OUTPUT_TYPE,
+    ]
+    .contains(&raw.as_str())
+    {
         return Err(bad_request(format!("invalid `output_type`: {raw}")));
     }
     Ok(Some(raw.clone()))

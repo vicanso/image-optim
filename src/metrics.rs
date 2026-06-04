@@ -44,9 +44,7 @@ const BYTES_BUCKETS: &[f64] = &[
     16_777_216.0,
     33_554_432.0,
 ];
-const DSSIM_BUCKETS: &[f64] = &[
-    0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1,
-];
+const DSSIM_BUCKETS: &[f64] = &[0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1];
 
 /// Install the global Prometheus recorder with explicit per-metric buckets
 /// so histograms render as `histogram` (with `_bucket`/`_sum`/`_count`),
@@ -108,7 +106,10 @@ pub fn init() {
         NAME_ERRORS_TOTAL,
         "Image task errors classified by error category."
     );
-    describe_gauge!(NAME_PROCESS_MEMORY_MB, "RSS memory in MiB (sampled every 60s).");
+    describe_gauge!(
+        NAME_PROCESS_MEMORY_MB,
+        "RSS memory in MiB (sampled every 60s)."
+    );
     describe_gauge!(NAME_PROCESS_CPU_PERCENT, "CPU percent (sampled every 60s).");
     describe_gauge!(
         NAME_PROCESS_OPEN_FILES,

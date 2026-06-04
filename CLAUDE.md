@@ -65,6 +65,10 @@ Key env vars:
 
 `clippy.toml` **denies `unwrap()`** — use `?`, `expect()` with a message, or explicit error handling instead. Cognitive complexity limit is 10 per function. Tests are exempt from the unwrap restriction.
 
+## Code Style
+
+Bring std/external types into scope with a `use` statement at the top of the file; do not qualify them inline in the body. For example use `use std::collections::HashMap;` then refer to `HashMap`, not `std::collections::HashMap` inline at the type or value site. Same rule for any `crate::foo::Bar`. Exception: when two types collide in the same scope (rare), keep one inline-qualified or alias with `as`.
+
 ## CI/CD
 
 GitHub Actions (`.github/workflows/build.yml`) triggers on version tags (`v*.*.*`), builds AMD64 and ARM64 release binaries inside Docker, then pushes a multi-arch manifest to Docker Hub.
