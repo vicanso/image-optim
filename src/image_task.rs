@@ -262,6 +262,12 @@ pub struct ImageTaskParams {
     pub padding_width: Option<u32>,
     pub padding_height: Option<u32>,
     pub padding_color: Option<String>,
+    /// When true, skip the DSSIM diff task on the pure-optim path. DSSIM
+    /// requires re-encoding then re-decoding the output to compare against
+    /// the original — for AVIF/JXL that's effectively doubling encode cost.
+    /// Default false (=compute) preserves prior behaviour; client opts out
+    /// via `?diff=false`.
+    pub skip_diff: bool,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -499,18 +505,26 @@ async fn run_image_task_inner(params: ImageTaskParams) -> Result<(ImageTaskResul
         tasks.push(new_strip_task());
     }
 
-    if should_add_diff_task {
+    // DSSIM is only meaningful on the pure-optim path (no transforms), and
+    // even there clients can opt out with `?diff=false` to skip the second
+    // encode/decode round-trip — expensive for AVIF/JXL.
+    let measure_diff = should_add_diff_task && !params.skip_diff;
+    if measure_diff {
         tasks.push(new_diff_task());
     }
 
     img = run_image_blocking(img, tasks).await?;
     let buffer = Bytes::from(img.get_buffer().map_err(map_err)?.to_vec());
+    // -1.0 sentinel signals "not measured" to into_response (so the
+    // X-Dssim-Diff header is omitted) and to record_dssim (whose `>= 0.0`
+    // guard skips the histogram observation).
+    let diff = if measure_diff { img.diff } else { -1.0 };
     Ok((
         ImageTaskResult {
             buffer,
             original_size: img.original_size,
             ext: img.ext,
-            diff: img.diff,
+            diff,
         },
         cache_private,
     ))

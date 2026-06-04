@@ -28,14 +28,47 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
 use std::str::FromStr;
 use tibba_error::Error;
 use tibba_util::QueryParams;
 use validator::{Validate, ValidationError};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// `serde_urlencoded` only accepts JSON-literal booleans, but query strings
+/// carry every value as a string. Bridge the two by accepting the common
+/// truthy/falsy spellings for `bool` query fields.
+fn lenient_bool<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<bool, D::Error> {
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = bool;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a bool or the strings 1/true/yes/on / 0/false/no/off")
+        }
+        fn visit_bool<E: de::Error>(self, v: bool) -> std::result::Result<bool, E> {
+            Ok(v)
+        }
+        fn visit_str<E: de::Error>(self, s: &str) -> std::result::Result<bool, E> {
+            match s.to_ascii_lowercase().as_str() {
+                "1" | "true" | "yes" | "on" => Ok(true),
+                "" | "0" | "false" | "no" | "off" => Ok(false),
+                other => Err(E::custom(format!("invalid bool: {other}"))),
+            }
+        }
+    }
+    d.deserialize_any(V)
+}
+
+/// `Option<bool>` flavour: missing key → `None`, otherwise lenient bool.
+fn lenient_optional_bool<'de, D: Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<bool>, D::Error> {
+    lenient_bool(d).map(Some)
+}
 
 static ACCEPT_IMAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"image/([^,;]+)").expect("invalid regex"));
@@ -150,7 +183,7 @@ struct AdjustParams {
     /// 翻转方向：h / horizontal / v / vertical
     flip: Option<String>,
     /// 转换为灰度图
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_bool")]
     gray: bool,
     /// USM 锐化，格式：sigma 或 sigma,threshold（如 1.0 或 1.0,5）
     sharpen: Option<String>,
@@ -161,7 +194,7 @@ struct AdjustParams {
     /// 对比度调整（如 1.5），浮点数字符串
     contrast: Option<String>,
     /// 剥离 EXIF 元数据（不重新编码）
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_bool")]
     strip: bool,
     /// 画布扩展宽度（像素），与 padding_height 配合使用
     padding_width: Option<u32>,
@@ -169,6 +202,11 @@ struct AdjustParams {
     padding_height: Option<u32>,
     /// 画布填充色，十六进制（如 #ffffff 或 #ffffff80），默认透明
     padding_color: Option<String>,
+    /// 是否计算 DSSIM 并设置 X-Dssim-Diff 响应头。默认 true；客户端不关心
+    /// 时显式 `?diff=false` 可跳过纯优化路径上的二次编解码（AVIF/JXL 提速
+    /// 尤其明显）。
+    #[serde(default, deserialize_with = "lenient_optional_bool")]
+    diff: Option<bool>,
 }
 
 impl AdjustParams {
@@ -189,6 +227,7 @@ impl AdjustParams {
         p.padding_width = self.padding_width;
         p.padding_height = self.padding_height;
         p.padding_color = self.padding_color.clone();
+        p.skip_diff = matches!(self.diff, Some(false));
     }
 }
 
@@ -696,6 +735,11 @@ fn apply_adjust(task: &mut ImageTaskParams, merged: &BTreeMap<String, String>) -
         .get("padding_color")
         .cloned()
         .filter(|s| !s.is_empty());
+    // Default-true semantics: skip DSSIM only on explicit falsey value.
+    task.skip_diff = matches!(
+        merged.get("diff").map(|s| s.to_lowercase()).as_deref(),
+        Some("0" | "false" | "no" | "off")
+    );
     Ok(())
 }
 
