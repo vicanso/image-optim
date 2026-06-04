@@ -360,7 +360,12 @@ pub enum Op {
 )]
 async fn load_watermark_b64(source: Option<&str>, path: &str) -> Result<String> {
     let bytes = resolve_storage(source)?.read(path).await?;
-    Ok(STANDARD.encode(bytes.to_vec()))
+    // `Buffer::to_bytes()` is zero-copy when the buffer is contiguous (the
+    // case for local fs reads and single-range S3); only multi-range / chunked
+    // HTTP reads pay an allocation, and that one still beats `to_vec()`'s
+    // unconditional Vec copy. base64::Engine::encode accepts Bytes via its
+    // AsRef<[u8]> impl, so we don't need to materialize a Vec at all.
+    Ok(STANDARD.encode(bytes.to_bytes()))
 }
 
 #[cached(size = 1000, ttl = 1800, result = true, sync_writes = "by_key")]
