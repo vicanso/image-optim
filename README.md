@@ -4,23 +4,23 @@
 
 可以通过环境变量指定以下参数：
 
-- `IMOP_OPENDAL_URL`: 默认 OpenDAL 存储的 URL，默认为`file:///opt/images`，支持以下格式：
+- `IMOP__OPENDAL__URL`: 默认 OpenDAL 存储的 URL，默认为`file:///opt/images`，支持以下格式：
   - 本地文件系统：`file:///opt/images`
   - HTTP/HTTPS：`http://your-server/images` 或 `https://your-server/images`
   - S3 兼容存储：`s3://bucket-name?region=us-east-1&access_key_id=xxx&secret_access_key=xxx&endpoint=https://s3.amazonaws.com`
-- `IMOP_OPENDAL_<NAME>_URL`: 命名 OpenDAL 存储源（可配置多个），名字大小写不敏感。请求时通过 `?source=<NAME>` 选择对应源；不传 `source` 时使用默认存储。例如：
-  - `IMOP_OPENDAL_USERS_URL=file:///opt/images/users`
-  - `IMOP_OPENDAL_BAIDU_URL=https://www.baidu.com`
+- `IMOP__OPENDAL__<NAME>__URL`: 命名 OpenDAL 存储源（可配置多个），名字大小写不敏感。请求时通过 `?source=<NAME>` 选择对应源；不传 `source` 时使用默认存储。例如：
+  - `IMOP__OPENDAL__USERS__URL=file:///opt/images/users`
+  - `IMOP__OPENDAL__BAIDU__URL=https://www.baidu.com`
   - 调用：`/images/optim?source=baidu&file=image.jpg` 从 `baidu` 源读取 `https://www.baidu.com/image.jpg`
-- `IMOP_OPTIM_QUALITY`: 图片压缩质量（全格式默认值），默认 80
-- `IMOP_OPTIM_QUALITY_JPEG`: JPEG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
-- `IMOP_OPTIM_QUALITY_PNG`: PNG 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
-- `IMOP_OPTIM_QUALITY_WEBP`: WebP 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
-- `IMOP_OPTIM_QUALITY_AVIF`: AVIF 格式的压缩质量，未设置时使用 `IMOP_OPTIM_QUALITY`
-- `IMOP_OPTIM_SPEED`: 图片压缩速度，默认 3
-- `IMOP_PRESET_<NAME>`: 命名预设（可配置多个），名字大小写不敏感。值格式：`<op>&<key>=<value>&...`，其中 `<op>` ∈ `optim` / `resize` / `fit` / `watermark` / `crop` / `padding`。例如：
-  - `IMOP_PRESET_THUMB=fit&width=300&quality=70`
-  - `IMOP_PRESET_LOGOSTRIP=optim&strip=true`
+- `IMOP__OPTIM__QUALITY`: 图片压缩质量（全格式默认值），默认 80
+- `IMOP__OPTIM__QUALITY_JPEG`: JPEG 格式的压缩质量，未设置时使用 `IMOP__OPTIM__QUALITY`
+- `IMOP__OPTIM__QUALITY_PNG`: PNG 格式的压缩质量，未设置时使用 `IMOP__OPTIM__QUALITY`
+- `IMOP__OPTIM__QUALITY_WEBP`: WebP 格式的压缩质量，未设置时使用 `IMOP__OPTIM__QUALITY`
+- `IMOP__OPTIM__QUALITY_AVIF`: AVIF 格式的压缩质量，未设置时使用 `IMOP__OPTIM__QUALITY`
+- `IMOP__OPTIM__SPEED`: 图片压缩速度，默认 3
+- `IMOP__PRESET__<NAME>`: 命名预设（可配置多个），名字大小写不敏感。值格式：`<op>&<key>=<value>&...`，其中 `<op>` ∈ `optim` / `resize` / `fit` / `watermark` / `crop` / `padding`。例如：
+  - `IMOP__PRESET__THUMB=fit&width=300&quality=70`
+  - `IMOP__PRESET__LOGOSTRIP=optim&strip=true`
   - 调用：`/images/preset?preset=thumb&file=photo.jpg`，请求侧参数可覆盖预设默认值（如 `&quality=90`）
 
 ```bash
@@ -28,13 +28,13 @@ docker run -d \
   --name image-optim \
   -p 3000:3000 \
   -v ~/Downloads:/opt/images \
-  -e IMOP_OPENDAL_URL=file:///opt/images \
-  -e IMOP_OPTIM_QUALITY=80 \
-  -e IMOP_OPTIM_QUALITY_JPEG=85 \
-  -e IMOP_OPTIM_QUALITY_PNG=90 \
-  -e IMOP_OPTIM_QUALITY_WEBP=80 \
-  -e IMOP_OPTIM_QUALITY_AVIF=70 \
-  -e IMOP_OPTIM_SPEED=3 \
+  -e IMOP__OPENDAL__URL=file:///opt/images \
+  -e IMOP__OPTIM__QUALITY=80 \
+  -e IMOP__OPTIM__QUALITY_JPEG=85 \
+  -e IMOP__OPTIM__QUALITY_PNG=90 \
+  -e IMOP__OPTIM__QUALITY_WEBP=80 \
+  -e IMOP__OPTIM__QUALITY_AVIF=70 \
+  -e IMOP__OPTIM__SPEED=3 \
   vicanso/image-optim
 ```
 
@@ -48,7 +48,7 @@ docker run -d \
 
 | 参数 | 说明 | 示例 |
 |------|------|------|
-| `source` | 选择命名 OpenDAL 存储源（对应 `IMOP_OPENDAL_<NAME>_URL`），名字大小写不敏感；未提供时使用默认 `IMOP_OPENDAL_URL`。`watermark` 端点的水印文件也从同一源读取 | `source=users` |
+| `source` | 选择命名 OpenDAL 存储源（对应 `IMOP__OPENDAL__<NAME>__URL`），名字大小写不敏感；未提供时使用默认 `IMOP__OPENDAL__URL`。`watermark` 端点的水印文件也从同一源读取 | `source=users` |
 | `output_type` | 输出格式：`jpeg` `png` `webp` `avif` `jxl` `auto`；`auto` 会根据请求的 `Accept` 头协商。⚠️ `jxl` 会丢弃 alpha 通道（libjxl 0.11 / jpegxl-rs 0.11 限制） | `output_type=webp` |
 | `quality` | 压缩质量 0-100，默认取配置 `optim.quality_<format>` 或 `optim.quality` | `quality=85` |
 | `rotate` | 旋转角度：`90` / `180` / `270` | `rotate=90` |
@@ -306,9 +306,9 @@ curl http://127.0.0.1:3000/images/command
 
 ### 9. 预设处理 (`/images/preset`)
 
-通过环境变量 `IMOP_PRESET_<NAME>` 预先定义"操作 + 参数"组合，请求侧只需选择预设名 + 文件路径即可，便于前端/CDN 规范化 URL（同一份缩略图永远同一个 URL）。
+通过环境变量 `IMOP__PRESET__<NAME>` 预先定义"操作 + 参数"组合，请求侧只需选择预设名 + 文件路径即可，便于前端/CDN 规范化 URL（同一份缩略图永远同一个 URL）。
 
-**预设格式**: `IMOP_PRESET_<NAME>=<op>&<key>=<value>&...`
+**预设格式**: `IMOP__PRESET__<NAME>=<op>&<key>=<value>&...`
 - `<op>` ∈ `optim` / `resize` / `fit` / `watermark` / `crop` / `padding`
 - 名字大小写不敏感
 - 启动时无效预设会记录 warn 并跳过，不阻断启动
@@ -316,16 +316,16 @@ curl http://127.0.0.1:3000/images/command
 **请求方式**: `GET /images/preset`
 
 **Query 参数**:
-- `preset` (必填): 预设名（对应 `IMOP_PRESET_<NAME>`），大小写不敏感
+- `preset` (必填): 预设名（对应 `IMOP__PRESET__<NAME>`），大小写不敏感
 - `file` (必填): 存储中的图片文件路径，最小长度 5 个字符
 - 其余参数 (可选): 任意通用参数或预设字段。**请求侧值会覆盖预设默认值**
 
 **示例**:
 ```bash
 # 启动时配置
-export IMOP_PRESET_THUMB="fit&width=300&quality=70"
-export IMOP_PRESET_LOGOSTRIP="optim&strip=true"
-export IMOP_PRESET_SQUARE="padding&width=1000&height=1000&color=%23ffffff"
+export IMOP__PRESET__THUMB="fit&width=300&quality=70"
+export IMOP__PRESET__LOGOSTRIP="optim&strip=true"
+export IMOP__PRESET__SQUARE="padding&width=1000&height=1000&color=%23ffffff"
 
 # 调用：使用预设默认值
 curl "http://127.0.0.1:3000/images/preset?preset=thumb&file=images/photo.jpg"
@@ -359,7 +359,38 @@ auto_output_types = ["avif", "png"] # 自动检测时使用的图片格式，用
 
 ### 存储配置
 
-图片文件和水印文件均从 OpenDAL 配置的存储中读取，支持本地文件系统、HTTP/HTTPS 以及 S3 兼容存储（阿里云 OSS、MinIO 等），通过 `IMOP_OPENDAL_URL` 环境变量配置。
+图片文件和水印文件均从 OpenDAL 配置的存储中读取，支持本地文件系统、HTTP/HTTPS 以及 S3 兼容存储（阿里云 OSS、MinIO 等），通过 `IMOP__OPENDAL__URL` 环境变量配置。
+
+### 路径白名单（可选）
+
+为每个存储独立配置允许的路径前缀，超出前缀的请求直接 `400 path_guard`。空列表 = 不限制（默认行为，向后兼容）。
+
+```toml
+[guard]
+# 默认存储的允许前缀（同时作为所有未单独配置的命名存储的兜底策略）
+default_prefix_allowlist = ["users/", "thumbs/"]
+
+# 命名存储独立策略
+[guard.source_prefix_allowlist]
+users  = ["profiles/", "avatars/"]
+thumbs = ["sm/", "md/", "lg/"]
+# raw  = []   # 显式空 = 该命名存储不受限制
+```
+
+等价的环境变量（CSV，跟 TOML 列表二选一）：
+
+```bash
+IMOP__GUARD__DEFAULT_PREFIX_ALLOWLIST="users/,thumbs/"
+IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__USERS="profiles/,avatars/"
+IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__THUMBS="sm/,md/,lg/"
+```
+
+**语义要点**：
+- 前缀必须以 `/` 结尾，启动时缺则自动补全并 warn（防止 `"user"` 误匹配 `"users/"` 和 `"user_data/"`）
+- 命名存储**未单独配置时回退到 `default_prefix_allowlist`**——新加 `IMOP__OPENDAL__<NAME>__URL` 不会意外绕过默认策略
+- 显式 `[]`（命名存储）= 该 source 不限制，用于专门配置开放型存储
+- `?source=foo&file=...` 与 watermark 路径走同一套规则
+- 被拒次数在 `image_optim_path_rejected_total{reason="not_in_allowlist"}` 计数
 
 ---
 

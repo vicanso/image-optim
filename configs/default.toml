@@ -4,6 +4,11 @@
 timeout = "30s"
 listen = "0.0.0.0:3000"
 processing_limit = 1_000
+# Decode-size guards. Set to 0 to disable a given check.
+# 32 MiB download cap — DoS protection against giant source objects.
+max_source_bytes = 33_554_432
+# 100 megapixels — decompression-bomb protection (small file, huge canvas).
+max_source_pixels = 100_000_000
 
 [opendal]
 url = "file://~/Downloads"
@@ -13,3 +18,15 @@ quality = 80
 speed = 3
 max_age = "1440h"
 auto_output_types = ["avif", "png"]
+
+# Per-storage path allowlist. Empty list = no restriction (current behaviour).
+# Each prefix must end with `/` to enforce a directory boundary; missing
+# trailing slashes are auto-appended at startup with a warn.
+# A named source without its own entry inherits `default_prefix_allowlist`.
+# To explicitly mark a named source as unrestricted, give it `[]`.
+[guard]
+default_prefix_allowlist = []
+
+# [guard.source_prefix_allowlist]
+# users  = ["profiles/", "avatars/"]
+# thumbs = ["sm/", "md/", "lg/"]

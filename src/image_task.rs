@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::config::must_get_config;
+use crate::config::{must_get_basic_config, must_get_config};
 use crate::dal::{get_opendal_storage, get_opendal_storage_by_name};
+use crate::guard;
+use crate::metrics;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use cached::macros::cached;
@@ -100,6 +102,22 @@ fn map_err(err: impl ToString) -> Error {
     Error::new(err).with_category("imageoptimize")
 }
 
+/// Drive `run_with_image` on a dedicated blocking thread so the encode/decode
+/// pipeline (libjxl, rav1e/AVIF, mozjpeg, image-rs resize/sharpen — all sync
+/// CPU-bound) can't starve the tokio I/O workers. imageoptimize 0.5.3 only
+/// inserts `block_in_place` when its `bin` feature is enabled, and that
+/// feature drags in clap/glob/num_cpus we don't want, so we wrap it here.
+async fn run_image_blocking(
+    image: ProcessImage,
+    tasks: Vec<Vec<String>>,
+) -> Result<ProcessImage> {
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || handle.block_on(run_with_image(image, tasks)))
+        .await
+        .map_err(|e| Error::new(e).with_category("blocking_join"))?
+        .map_err(map_err)
+}
+
 /// 根据 source 返回对应的 OpenDAL 存储；未指定时返回默认存储；指定但未找到时返回 400 错误。
 fn resolve_storage(source: Option<&str>) -> Result<&'static tibba_opendal::Storage> {
     match source {
@@ -112,10 +130,102 @@ fn resolve_storage(source: Option<&str>) -> Result<&'static tibba_opendal::Stora
     }
 }
 
+fn reject_too_large<S: Into<String>>(reason: &'static str, msg: S) -> Error {
+    metrics::inc_decode_rejected(reason);
+    Error::new(msg.into())
+        .with_category("decode_guard")
+        .with_status(413)
+}
+
+fn reject_path(reason: &'static str, path: &str) -> Error {
+    metrics::inc_path_rejected(reason);
+    Error::new(format!("invalid file path ({reason}): {path}"))
+        .with_category("path_guard")
+        .with_status(400)
+}
+
+/// Reject paths that could escape the storage root or smuggle separators past
+/// downstream code. Runs ahead of any OpenDAL call — the local `file://` backend
+/// joins requested paths to its root without canonicalising, so `../../etc/passwd`
+/// would otherwise escape. Cheap defence-in-depth for HTTP/S3 backends too.
+fn sanitize_storage_path(path: &str) -> Result<()> {
+    if path.is_empty() {
+        return Err(reject_path("empty", path));
+    }
+    if path.contains('\0') {
+        return Err(reject_path("null_byte", path));
+    }
+    if path.contains('\\') {
+        return Err(reject_path("backslash", path));
+    }
+    if path.starts_with('/') {
+        return Err(reject_path("absolute", path));
+    }
+    if path.split('/').any(|seg| seg == "..") {
+        return Err(reject_path("parent_segment", path));
+    }
+    Ok(())
+}
+
 async fn load_image(file: &str, source: Option<&str>) -> Result<ProcessImage> {
+    sanitize_storage_path(file)?;
+    guard::enforce_prefix(source, file)?;
     let ext = file.split('.').next_back().unwrap_or("jpeg");
-    let buffer = resolve_storage(source)?.read(file).await?;
-    ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)
+    let basic = must_get_basic_config();
+    let storage = resolve_storage(source)?;
+
+    // Pre-check the object size via stat() so we can 413 oversized sources
+    // without paying the download. S3 and HTTP backends serve this with a
+    // HEAD; the local filesystem backend turns it into a stat(2) — both are
+    // negligible compared with reading a multi-MiB body. Backends that don't
+    // implement stat (or services that omit content-length) report 0 here,
+    // and we fall through to the post-read guard below.
+    if basic.max_source_bytes > 0
+        && let Ok(meta) = storage.stat(file).await
+    {
+        let declared = meta.content_length();
+        if declared > 0 && declared > basic.max_source_bytes {
+            return Err(reject_too_large(
+                "bytes",
+                format!(
+                    "source too large: {declared} bytes (stat) > limit {} bytes",
+                    basic.max_source_bytes
+                ),
+            ));
+        }
+    }
+
+    let buffer = storage.read(file).await?;
+    let bytes_len = buffer.len() as u64;
+    metrics::record_input_bytes(bytes_len);
+
+    if basic.max_source_bytes > 0 && bytes_len > basic.max_source_bytes {
+        return Err(reject_too_large(
+            "bytes",
+            format!(
+                "source too large: {bytes_len} bytes > limit {} bytes",
+                basic.max_source_bytes
+            ),
+        ));
+    }
+
+    let img = ProcessImage::new(buffer.to_vec(), ext).map_err(map_err)?;
+
+    if basic.max_source_pixels > 0 {
+        let (w, h) = img.get_size();
+        let pixels = (w as u64).saturating_mul(h as u64);
+        if pixels > basic.max_source_pixels {
+            return Err(reject_too_large(
+                "pixels",
+                format!(
+                    "source too large: {pixels} pixels ({w}x{h}) > limit {}",
+                    basic.max_source_pixels
+                ),
+            ));
+        }
+    }
+
+    Ok(img)
 }
 
 /// 文件路径或内容型任务参数，用作缓存 key（须实现 Hash + Eq）。
@@ -123,7 +233,7 @@ async fn load_image(file: &str, source: Option<&str>) -> Result<ProcessImage> {
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ImageTaskParams {
     pub file: String,
-    /// OpenDAL 存储源名（来自 `IMOP_OPENDAL_<NAME>_URL`）；未设置时使用默认存储。
+    /// OpenDAL 存储源名（来自 `IMOP__OPENDAL__<NAME>__URL`）；未设置时使用默认存储。
     pub source: Option<String>,
     pub output_type: Option<String>,
     pub quality: Option<u8>,
@@ -225,8 +335,49 @@ pub enum Op {
     },
 }
 
+/// Cache watermark bytes (base64-encoded) keyed by `(source, path)`.
+/// Watermark paths are nearly always a small fixed set (logos / brand marks),
+/// so a 200-entry LRU with 30-min TTL gets very high hit rate and skips both
+/// the storage read AND the per-request base64 encode. Caller is responsible
+/// for running `sanitize_storage_path` + `guard::enforce_prefix` first so we
+/// never cache a value for an attacker-controlled path.
+#[cached(
+    size = 200,
+    ttl = 1800,
+    result = true,
+    sync_writes = "by_key",
+    key = "(Option<String>, String)",
+    convert = r#"{ (source.map(str::to_owned), path.to_owned()) }"#
+)]
+async fn load_watermark_b64(source: Option<&str>, path: &str) -> Result<String> {
+    let bytes = resolve_storage(source)?.read(path).await?;
+    Ok(STANDARD.encode(bytes.to_vec()))
+}
+
 #[cached(size = 1000, ttl = 1800, result = true, sync_writes = "by_key")]
 pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult, bool)> {
+    let started = std::time::Instant::now();
+    match run_image_task_inner(params).await {
+        Ok((result, private)) => {
+            let fmt = result.ext.as_str();
+            metrics::record_task_duration(fmt, started.elapsed().as_secs_f64());
+            metrics::record_output_bytes(fmt, result.buffer.len() as u64);
+            metrics::record_dssim(fmt, result.diff);
+            Ok((result, private))
+        }
+        Err(e) => {
+            let cat = if e.category.is_empty() {
+                "unknown"
+            } else {
+                e.category.as_str()
+            };
+            metrics::inc_errors(cat);
+            Err(e)
+        }
+    }
+}
+
+async fn run_image_task_inner(params: ImageTaskParams) -> Result<(ImageTaskResult, bool)> {
     let optim_config = get_default_optim_params();
     let mut output_type = params.output_type;
     let mut cache_private = false;
@@ -245,8 +396,9 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
     let mut should_add_diff_task = true;
 
     if let Some(watermark_path) = params.watermark {
-        let watermark_data = resolve_storage(source)?.read(&watermark_path).await?;
-        let watermark_b64 = STANDARD.encode(watermark_data.to_vec());
+        sanitize_storage_path(&watermark_path)?;
+        guard::enforce_prefix(source, &watermark_path)?;
+        let watermark_b64 = load_watermark_b64(source, &watermark_path).await?;
         tasks.push(new_watermark_task(
             &watermark_b64,
             &params.position.unwrap_or_default(),
@@ -353,7 +505,7 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
         tasks.push(new_diff_task());
     }
 
-    img = run_with_image(img, tasks).await.map_err(map_err)?;
+    img = run_image_blocking(img, tasks).await?;
     let buffer = img.get_buffer().map_err(map_err)?.to_vec();
     Ok((
         ImageTaskResult {
@@ -369,8 +521,36 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
 /// 按 ops 顺序执行流水线，不走缓存。
 /// 若 ops 中不含 Optim，自动在末尾追加默认编码步骤。
 pub async fn run_image_pipeline(data: Vec<u8>, ext: &str, ops: Vec<Op>) -> Result<ImageTaskResult> {
+    let started = std::time::Instant::now();
+    let basic = must_get_basic_config();
+    let bytes_len = data.len() as u64;
+    metrics::record_input_bytes(bytes_len);
+    if basic.max_source_bytes > 0 && bytes_len > basic.max_source_bytes {
+        return Err(reject_too_large(
+            "bytes",
+            format!(
+                "source too large: {bytes_len} bytes > limit {} bytes",
+                basic.max_source_bytes
+            ),
+        ));
+    }
+
     let optim_config = get_default_optim_params();
     let mut img = ProcessImage::new(data, ext).map_err(map_err)?;
+
+    if basic.max_source_pixels > 0 {
+        let (w, h) = img.get_size();
+        let pixels = (w as u64).saturating_mul(h as u64);
+        if pixels > basic.max_source_pixels {
+            return Err(reject_too_large(
+                "pixels",
+                format!(
+                    "source too large: {pixels} pixels ({w}x{h}) > limit {}",
+                    basic.max_source_pixels
+                ),
+            ));
+        }
+    }
     let original_ext = img.ext.clone();
 
     let mut tasks: Vec<Vec<String>> = Vec::with_capacity(ops.len() + 1);
@@ -430,8 +610,11 @@ pub async fn run_image_pipeline(data: Vec<u8>, ext: &str, ops: Vec<Op>) -> Resul
         ));
     }
 
-    img = run_with_image(img, tasks).await.map_err(map_err)?;
+    img = run_image_blocking(img, tasks).await?;
     let buffer = img.get_buffer().map_err(map_err)?.to_vec();
+    metrics::record_output_bytes(&img.ext, buffer.len() as u64);
+    metrics::record_task_duration(&img.ext, started.elapsed().as_secs_f64());
+    metrics::record_dssim(&img.ext, img.diff);
     Ok(ImageTaskResult {
         buffer,
         original_size: img.original_size,

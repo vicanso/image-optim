@@ -42,6 +42,14 @@ fn default_commit_id() -> String {
     GIT_HASH.to_string()
 }
 
+fn default_max_source_bytes() -> u64 {
+    32 * 1024 * 1024
+}
+
+fn default_max_source_pixels() -> u64 {
+    100_000_000
+}
+
 // BasicConfig struct defines the basic application settings
 // with validation rules for each field
 #[derive(Debug, Clone, Default, Validate, Deserialize)]
@@ -59,6 +67,16 @@ pub struct BasicConfig {
     // commit id
     #[serde(default = "default_commit_id")]
     pub commit_id: String,
+    // Reject source images whose downloaded byte size exceeds this cap.
+    // 0 disables the check. Guards the download path against memory blowup
+    // from oversized objects in upstream storage.
+    #[serde(default = "default_max_source_bytes")]
+    pub max_source_bytes: u64,
+    // Reject decoded source images whose pixel count (width * height)
+    // exceeds this cap. 0 disables. Guards against decompression bombs
+    // (small file, huge canvas).
+    #[serde(default = "default_max_source_pixels")]
+    pub max_source_pixels: u64,
 }
 
 static BASIC_CONFIG: OnceCell<BasicConfig> = OnceCell::new();

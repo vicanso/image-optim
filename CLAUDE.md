@@ -30,8 +30,8 @@ The service is a single Axum/Tokio HTTP server on port 3000 with 7 modules:
 - **`router.rs`** — Axum router; all image endpoints live under `/images/*`
 - **`image.rs`** — HTTP handlers for the four image operations; reads Accept header for auto output-format selection; sets `X-Dssim-Diff` and `X-Ratio` response headers
 - **`image_task.rs`** — coordinates calls to the `imageoptimize` crate; caches results (1000 items, 30-min TTL via `cached`)
-- **`config.rs`** — TOML config loaded from `configs/` directory; env vars prefixed `IMOP_` override fields
-- **`dal.rs`** — storage abstraction via OpenDAL (local filesystem by default; S3-compatible via `IMOP_OPENDAL_URL`)
+- **`config.rs`** — TOML config loaded from `configs/` directory; env vars prefixed `IMOP__` override fields (see Configuration below for the separator rules)
+- **`dal.rs`** — storage abstraction via OpenDAL (local filesystem by default; S3-compatible via `IMOP__OPENDAL__URL`)
 - **`state.rs`** — shared `AppState`; tracks CPU/memory/IO metrics every 60s; enforces `processing_limit` concurrency cap
 
 **API endpoints** (all GET with query params):
@@ -45,14 +45,21 @@ The service is a single Axum/Tokio HTTP server on port 3000 with 7 modules:
 
 Config files in `configs/` are layered: `default.toml` → `{RUST_ENV}.toml` → env var overrides.
 
+Env var convention: every level boundary uses `__` (double underscore); a single `_` is preserved as part of the field name. `IMOP__OPENDAL__URL` → `opendal.url`; `IMOP__BASIC__MAX_SOURCE_BYTES` → `basic.max_source_bytes` (note the single `_` inside `max_source_bytes` is part of the key name). All `IMOP__`-prefixed vars follow this rule, including the two read directly via `std::env::var` (`IMOP__THREADS`, `IMOP__OPENDAL__<NAME>__URL`).
+
 Key env vars:
 | Variable | Default | Description |
 |---|---|---|
 | `RUST_ENV` | `dev` | Selects `configs/{env}.toml` |
-| `IMOP_OPENDAL_URL` | `file://~/Downloads` | Storage backend URL |
-| `IMOP_OPTIM_QUALITY` | `80` | JPEG/WebP quality 0–100 |
-| `IMOP_OPTIM_SPEED` | `3` | AVIF encode speed 1–10 |
-| `IMAGE_OPTIM_THREADS` | auto | Tokio worker thread count |
+| `IMOP__OPENDAL__URL` | `file://~/Downloads` | Default storage backend URL |
+| `IMOP__OPENDAL__<NAME>__URL` | — | Extra named storage; selected by `?source=<name>` |
+| `IMOP__OPTIM__QUALITY` | `80` | JPEG/WebP quality 0–100 |
+| `IMOP__OPTIM__SPEED` | `3` | AVIF encode speed 1–10 |
+| `IMOP__BASIC__MAX_SOURCE_BYTES` | `33554432` | Reject sources whose byte size exceeds this (0 = off; pre-checked via `stat()`) |
+| `IMOP__BASIC__MAX_SOURCE_PIXELS` | `100000000` | Reject decoded sources whose `width*height` exceeds this (0 = off) |
+| `IMOP__GUARD__DEFAULT_PREFIX_ALLOWLIST` | `[]` | CSV (env) or TOML list of allowed path prefixes for the default storage; empty = unrestricted; named storages inherit this when they have no own entry |
+| `IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__<NAME>` | — | Per-named-storage override; explicit empty string opts that source out of restrictions |
+| `IMOP__THREADS` | auto | Tokio worker thread count |
 
 ## Linter Rules
 

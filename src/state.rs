@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use super::config::must_get_basic_config;
+use crate::metrics;
 use ctor::ctor;
 use once_cell::sync::{Lazy, OnceCell};
 use std::sync::Arc;
@@ -69,6 +70,11 @@ async fn update_performance() {
     data.open_files = process_system_info.open_files.unwrap_or(0);
     data.written_mb = (process_system_info.written_bytes / mb) as u32;
     data.read_mb = (process_system_info.read_bytes / mb) as u32;
+    metrics::set_process_metrics(
+        data.memory_usage_mb as i64,
+        data.cpu_usage as i64,
+        data.open_files as i64,
+    );
     info!(
         category = "application_performance",
         memory_usage = data.memory_usage_mb,

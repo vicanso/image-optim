@@ -101,7 +101,7 @@ fn x_output_type(output_type: &str) -> Result<(), ValidationError> {
 /// 所有 GET 端点共享的图像调整参数，通过 `#[serde(flatten)]` 嵌入各端点结构体。
 #[derive(Debug, Deserialize, Clone, Default)]
 struct AdjustParams {
-    /// OpenDAL 存储源名，对应 `IMOP_OPENDAL_<NAME>_URL`；未设置时使用默认存储。
+    /// OpenDAL 存储源名，对应 `IMOP__OPENDAL__<NAME>__URL`；未设置时使用默认存储。
     source: Option<String>,
     /// 旋转角度：90 / 180 / 270
     rotate: Option<u16>,

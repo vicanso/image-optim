@@ -20,8 +20,10 @@ use tracing_subscriber::FmtSubscriber;
 
 mod config;
 mod dal;
+mod guard;
 mod image;
 mod image_task;
+mod metrics;
 mod preset;
 mod router;
 mod state;
@@ -102,6 +104,7 @@ async fn shutdown_signal() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     run_before_tasks().await?;
     run_scheduler_jobs().await?;
+    metrics::init();
 
     // config is validated in init function
     let basic_config = must_get_basic_config();
@@ -151,7 +154,7 @@ fn main() {
         std::process::exit(1);
     }));
     init_logger();
-    let cpus = std::env::var("IMAGE_OPTIM_THREADS")
+    let cpus = std::env::var("IMOP__THREADS")
         .map(|v| v.parse::<usize>().unwrap_or(num_cpus::get()))
         .unwrap_or(num_cpus::get())
         .max(1);

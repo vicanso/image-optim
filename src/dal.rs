@@ -27,14 +27,14 @@ type Result<T> = std::result::Result<T, Error>;
 static OPENDAL_STORAGE: OnceCell<Storage> = OnceCell::new();
 static NAMED_STORAGES: OnceCell<HashMap<String, Storage>> = OnceCell::new();
 
-/// 默认 OpenDAL 存储（来自 `IMOP_OPENDAL_URL`）。未初始化时 panic。
+/// 默认 OpenDAL 存储（来自 `IMOP__OPENDAL__URL`）。未初始化时 panic。
 pub fn get_opendal_storage() -> &'static Storage {
     OPENDAL_STORAGE
         .get()
         .unwrap_or_else(|| panic!("opendal storage not initialized"))
 }
 
-/// 按名字查找命名 OpenDAL 存储（来自 `IMOP_OPENDAL_<NAME>_URL`）。
+/// 按名字查找命名 OpenDAL 存储（来自 `IMOP__OPENDAL__<NAME>__URL`）。
 /// 名字大小写不敏感，未找到返回 `None`。
 pub fn get_opendal_storage_by_name(name: &str) -> Option<&'static Storage> {
     NAMED_STORAGES
@@ -42,13 +42,14 @@ pub fn get_opendal_storage_by_name(name: &str) -> Option<&'static Storage> {
         .and_then(|map| map.get(&name.to_lowercase()))
 }
 
-/// 扫描环境变量 `IMOP_OPENDAL_<NAME>_URL`，返回 `(小写名, URL)` 列表。
-/// 排除裸 `IMOP_OPENDAL_URL`（默认存储），名字段为空时跳过。
+/// 扫描环境变量 `IMOP__OPENDAL__<NAME>__URL`，返回 `(小写名, URL)` 列表。
+/// 排除裸 `IMOP__OPENDAL__URL`（默认存储，由 tibba-config 处理），名字段为空时跳过。
+/// `__` 是层级分隔符，与 tibba-config 一致；`<NAME>` 中的单 `_` 保留为名字本身。
 fn collect_named_source_envs() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for (key, value) in std::env::vars() {
-        if let Some(rest) = key.strip_prefix("IMOP_OPENDAL_")
-            && let Some(name) = rest.strip_suffix("_URL")
+        if let Some(rest) = key.strip_prefix("IMOP__OPENDAL__")
+            && let Some(name) = rest.strip_suffix("__URL")
             && !name.is_empty()
         {
             out.push((name.to_lowercase(), value));

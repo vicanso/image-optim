@@ -37,7 +37,7 @@ pub fn get_preset(name: &str) -> Option<&'static Preset> {
     PRESETS.get().and_then(|m| m.get(&name.to_lowercase()))
 }
 
-/// 解析单条 `IMOP_PRESET_<NAME>=<op>&k=v&k=v...` 的值字符串。
+/// 解析单条 `IMOP__PRESET__<NAME>=<op>&k=v&k=v...` 的值字符串。
 ///
 /// 第一个分段必须是无 `=` 的操作名（如 `fit`）；其余分段为 `key=value` 对。
 /// 重复键以最后一个为准。空键、空段忽略。
@@ -88,7 +88,7 @@ fn parse_preset_value(raw: &str) -> Result<Preset> {
 fn build_registry() -> HashMap<String, Preset> {
     let mut out: HashMap<String, Preset> = HashMap::new();
     for (key, value) in std::env::vars() {
-        let Some(name) = key.strip_prefix("IMOP_PRESET_") else {
+        let Some(name) = key.strip_prefix("IMOP__PRESET__") else {
             continue;
         };
         if name.is_empty() {

@@ -13,12 +13,25 @@
 // limitations under the License.
 
 use crate::image::new_image_router;
+use crate::metrics;
 use crate::state::get_app_state;
 use axum::Router;
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
 use tibba_error::Error;
 use tibba_router_common::{CommonRouterParams, new_common_router};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
+
+async fn metrics_handler() -> Response {
+    let (content_type, body) = metrics::render();
+    let mut res = body.into_response();
+    if let Ok(value) = HeaderValue::from_str(&content_type) {
+        res.headers_mut().insert(header::CONTENT_TYPE, value);
+    }
+    res
+}
 
 pub fn new_router() -> Result<Router> {
     let common_router = new_common_router(CommonRouterParams {
@@ -28,5 +41,6 @@ pub fn new_router() -> Result<Router> {
 
     Ok(Router::new()
         .nest("/images", new_image_router())
+        .route("/metrics", get(metrics_handler))
         .merge(common_router))
 }
