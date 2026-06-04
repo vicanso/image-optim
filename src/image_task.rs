@@ -369,12 +369,7 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
             Ok((result, private))
         }
         Err(e) => {
-            let cat = if e.category.is_empty() {
-                "unknown"
-            } else {
-                e.category.as_str()
-            };
-            metrics::inc_errors(cat);
+            metrics::inc_errors(&e.category);
             Err(e)
         }
     }

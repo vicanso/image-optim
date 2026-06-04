@@ -121,21 +121,60 @@ pub fn init() {
     gauge!(NAME_BUILD_INFO, "commit" => commit).set(1.0);
 }
 
+/// Intern output_format label values to `&'static str` so the metrics
+/// facade stores a cheap `Cow::Borrowed` instead of an owned String per
+/// request. Bounds label cardinality to the set imageoptimize can actually
+/// emit (see `OptimProcess::process`); any future format slips into
+/// `"other"` rather than producing a new Prometheus time-series.
+fn intern_format(f: &str) -> &'static str {
+    match f {
+        "jpg" | "jpeg" => "jpeg",
+        "png" => "png",
+        "webp" => "webp",
+        "avif" => "avif",
+        "jxl" => "jxl",
+        "gif" => "gif",
+        _ => "other",
+    }
+}
+
+/// Intern error-category label values to `&'static str`. Error::category is
+/// a String (from tibba-error), so without interning a malicious upstream
+/// or transitive lib could explode label cardinality in the in-process
+/// metric registry. Buckets unknown values into `"other"`, empty into
+/// `"unknown"`.
+fn intern_error_category(c: &str) -> &'static str {
+    match c {
+        "" => "unknown",
+        "imageoptimize" => "imageoptimize",
+        "decode_guard" => "decode_guard",
+        "path_guard" => "path_guard",
+        "open_dal" => "open_dal",
+        "blocking_join" => "blocking_join",
+        "exception" => "exception",
+        "timeout" => "timeout",
+        "guard" => "guard",
+        "config" => "config",
+        "preset" => "preset",
+        _ => "other",
+    }
+}
+
 pub fn record_input_bytes(n: u64) {
     histogram!(NAME_INPUT_BYTES).record(n as f64);
 }
 
 pub fn record_output_bytes(format: &str, n: u64) {
-    histogram!(NAME_OUTPUT_BYTES, "output_format" => format.to_string()).record(n as f64);
+    histogram!(NAME_OUTPUT_BYTES, "output_format" => intern_format(format)).record(n as f64);
 }
 
 pub fn record_task_duration(format: &str, secs: f64) {
-    histogram!(NAME_TASK_DURATION, "output_format" => format.to_string()).record(secs);
+    histogram!(NAME_TASK_DURATION, "output_format" => intern_format(format)).record(secs);
 }
 
 pub fn record_dssim(format: &str, diff: f64) {
     if diff >= 0.0 {
-        histogram!(NAME_DSSIM_DIFF, "output_format" => format.to_string()).record(diff);
+        histogram!(NAME_DSSIM_DIFF, "output_format" => intern_format(format)).record(diff);
     }
 }
 
@@ -148,7 +187,7 @@ pub fn inc_path_rejected(reason: &'static str) {
 }
 
 pub fn inc_errors(category: &str) {
-    counter!(NAME_ERRORS_TOTAL, "category" => category.to_string()).increment(1);
+    counter!(NAME_ERRORS_TOTAL, "category" => intern_error_category(category)).increment(1);
 }
 
 pub fn set_process_metrics(memory_mb: i64, cpu_percent: i64, open_files: i64) {
