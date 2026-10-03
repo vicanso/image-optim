@@ -1,4 +1,5 @@
-FROM rust:1.98 as builder
+FROM rust:1.98.1-trixie AS builder
+
 
 COPY . /image-optim
 
