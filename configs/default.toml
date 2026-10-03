@@ -30,3 +30,16 @@ default_prefix_allowlist = []
 # [guard.source_prefix_allowlist]
 # users  = ["profiles/", "avatars/"]
 # thumbs = ["sm/", "md/", "lg/"]
+
+# Web playground at `/playground`: upload an image and try the image APIs in
+# the browser. Uploads are served through the reserved `playground` source.
+[playground]
+enabled = true
+# Upload directory. Empty = <system temp dir>/image-optim-playground.
+dir = ""
+# Reject a single upload larger than this (10 MiB).
+max_upload_bytes = 10_485_760
+# Refuse uploads once the stored uploads add up to this many bytes (512 MiB).
+max_total_bytes = 536_870_912
+# Uploads older than this are deleted by a scheduled job.
+ttl = "1h"

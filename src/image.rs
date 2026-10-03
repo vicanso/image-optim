@@ -70,6 +70,25 @@ fn lenient_optional_bool<'de, D: Deserializer<'de>>(
     lenient_bool(d).map(Some)
 }
 
+/// Numeric fields of a `#[serde(flatten)]` struct are replayed from serde's
+/// buffered content, where every query value is still a string, so a plain
+/// `Option<u16>` fails with `invalid type: string "90", expected u16`. Parse
+/// the string here instead; an empty value counts as absent.
+fn lenient_optional_number<'de, D, T>(d: D) -> std::result::Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr,
+    T::Err: fmt::Display,
+{
+    let raw = String::deserialize(d)?;
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    raw.parse()
+        .map(Some)
+        .map_err(|e| de::Error::custom(format!("invalid number `{raw}`: {e}")))
+}
+
 static ACCEPT_IMAGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"image/([^,;]+)").expect("invalid regex"));
 
@@ -179,6 +198,7 @@ struct AdjustParams {
     /// OpenDAL 存储源名，对应 `IMOP__OPENDAL__<NAME>__URL`；未设置时使用默认存储。
     source: Option<String>,
     /// 旋转角度：90 / 180 / 270
+    #[serde(default, deserialize_with = "lenient_optional_number")]
     rotate: Option<u16>,
     /// 翻转方向：h / horizontal / v / vertical
     flip: Option<String>,
@@ -190,6 +210,7 @@ struct AdjustParams {
     /// 高斯模糊 sigma（如 2.0）
     blur: Option<String>,
     /// 亮度调整，正数增亮，负数减暗
+    #[serde(default, deserialize_with = "lenient_optional_number")]
     brighten: Option<i32>,
     /// 对比度调整（如 1.5），浮点数字符串
     contrast: Option<String>,
@@ -197,8 +218,10 @@ struct AdjustParams {
     #[serde(default, deserialize_with = "lenient_bool")]
     strip: bool,
     /// 画布扩展宽度（像素），与 padding_height 配合使用
+    #[serde(default, deserialize_with = "lenient_optional_number")]
     padding_width: Option<u32>,
     /// 画布扩展高度（像素）
+    #[serde(default, deserialize_with = "lenient_optional_number")]
     padding_height: Option<u32>,
     /// 画布填充色，十六进制（如 #ffffff 或 #ffffff80），默认透明
     padding_color: Option<String>,
@@ -224,9 +247,11 @@ impl AdjustParams {
         p.brighten = self.brighten;
         p.contrast = self.contrast.clone();
         p.strip = self.strip;
-        p.padding_width = self.padding_width;
-        p.padding_height = self.padding_height;
-        p.padding_color = self.padding_color.clone();
+        // `/images/padding` fills these from its own width/height/color before
+        // calling apply_to, so only override them when the adjust param is set
+        p.padding_width = self.padding_width.or(p.padding_width);
+        p.padding_height = self.padding_height.or(p.padding_height);
+        p.padding_color = self.padding_color.clone().or(p.padding_color.take());
         p.skip_diff = matches!(self.diff, Some(false));
     }
 }
@@ -729,12 +754,16 @@ fn apply_adjust(task: &mut ImageTaskParams, merged: &BTreeMap<String, String>) -
     task.brighten = parse_opt::<i32>(merged.get("brighten"), "brighten")?;
     task.contrast = merged.get("contrast").cloned().filter(|s| !s.is_empty());
     task.strip = parse_bool(merged.get("strip"));
-    task.padding_width = parse_opt::<u32>(merged.get("padding_width"), "padding_width")?;
-    task.padding_height = parse_opt::<u32>(merged.get("padding_height"), "padding_height")?;
+    // the `padding` op has already filled these from width/height/color
+    task.padding_width =
+        parse_opt::<u32>(merged.get("padding_width"), "padding_width")?.or(task.padding_width);
+    task.padding_height =
+        parse_opt::<u32>(merged.get("padding_height"), "padding_height")?.or(task.padding_height);
     task.padding_color = merged
         .get("padding_color")
         .cloned()
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.is_empty())
+        .or(task.padding_color.take());
     // Default-true semantics: skip DSSIM only on explicit falsey value.
     task.skip_diff = matches!(
         merged.get("diff").map(|s| s.to_lowercase()).as_deref(),
@@ -892,4 +921,86 @@ pub fn new_image_router() -> Router {
         .route("/preset", get(preset))
         .route("/process", post(process))
         .route("/command", get(command))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::Uri;
+
+    fn parse_optim(query: &str) -> std::result::Result<OptimParams, String> {
+        let uri: Uri = format!("/images/optim?{query}")
+            .parse()
+            .map_err(|e| format!("{e}"))?;
+        Query::<OptimParams>::try_from_uri(&uri)
+            .map(|Query(params)| params)
+            .map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn flattened_numeric_params_parse_from_query() {
+        let params = parse_optim(
+            "file=a.jpg&quality=75&rotate=90&brighten=-10&padding_width=100&padding_height=200",
+        )
+        .unwrap();
+        assert_eq!(params.quality, Some(75));
+        assert_eq!(params.adjust.rotate, Some(90));
+        assert_eq!(params.adjust.brighten, Some(-10));
+        assert_eq!(params.adjust.padding_width, Some(100));
+        assert_eq!(params.adjust.padding_height, Some(200));
+    }
+
+    #[test]
+    fn adjust_params_keep_padding_of_the_padding_endpoint() {
+        let mut task = ImageTaskParams {
+            padding_width: Some(1000),
+            padding_height: Some(800),
+            padding_color: Some("#ffffff".to_string()),
+            ..Default::default()
+        };
+        AdjustParams::default().apply_to(&mut task);
+        assert_eq!(task.padding_width, Some(1000));
+        assert_eq!(task.padding_height, Some(800));
+        assert_eq!(task.padding_color.as_deref(), Some("#ffffff"));
+
+        // explicit adjust params still win
+        let adjust = AdjustParams {
+            padding_width: Some(1200),
+            ..Default::default()
+        };
+        adjust.apply_to(&mut task);
+        assert_eq!(task.padding_width, Some(1200));
+        assert_eq!(task.padding_height, Some(800));
+    }
+
+    #[test]
+    fn preset_padding_keeps_its_canvas() {
+        let merged: BTreeMap<String, String> = [
+            ("file", "photo.jpg"),
+            ("width", "1000"),
+            ("height", "800"),
+            ("color", "#ffffff"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let task = build_task("padding", &merged, &HeaderMap::new()).unwrap();
+        assert_eq!(task.padding_width, Some(1000));
+        assert_eq!(task.padding_height, Some(800));
+        assert_eq!(task.padding_color.as_deref(), Some("#ffffff"));
+    }
+
+    #[test]
+    fn flattened_numeric_params_default_to_none() {
+        let params = parse_optim("file=a.jpg&rotate=").unwrap();
+        assert_eq!(params.adjust.rotate, None);
+        assert_eq!(params.adjust.brighten, None);
+        assert_eq!(params.adjust.padding_width, None);
+    }
+
+    #[test]
+    fn flattened_numeric_params_reject_garbage() {
+        let err = parse_optim("file=a.jpg&rotate=abc").unwrap_err();
+        assert!(err.contains("invalid number `abc`"), "{err}");
+    }
 }

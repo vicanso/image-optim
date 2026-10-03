@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tibba_config::{Config, humantime_serde};
 use tibba_error::Error;
-use tibba_hook::{BoxFuture, Task, register_task};
+use tibba_runtime::{BoxFuture, Task, register_task};
 use tibba_util::get_env;
 use tracing::info;
 use validator::Validate;
@@ -56,9 +56,9 @@ fn default_max_source_pixels() -> u64 {
 pub struct BasicConfig {
     // listen address
     pub listen: String,
-    // processing limit
-    #[validate(range(min = 0, max = 100_000))]
-    pub processing_limit: i32,
+    // processing limit, 0 means unlimited
+    #[validate(range(max = 100_000))]
+    pub processing_limit: u32,
     // timeout
     #[serde(with = "humantime_serde")]
     pub timeout: Duration,
@@ -91,20 +91,17 @@ fn new_basic_config(config: &Config) -> Result<BasicConfig> {
 fn new_config() -> Result<&'static Config> {
     CONFIGS.get_or_try_init(|| {
         let category = "config";
-        let mut arr = vec![];
+        let mut builder = Config::builder();
         for name in ["default.toml", &format!("{}.toml", get_env())] {
             let data = Configs::get(name)
                 .ok_or(map_err(format!("{name} not found")))?
                 .data;
             info!(category, "load config from {name}",);
             let s = std::str::from_utf8(&data).map_err(|e| map_err(e.to_string()))?;
-            arr.push(s.to_string());
+            builder = builder.add_toml(s);
         }
 
-        let config = Config::new(
-            &arr.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-            Some("IMOP"),
-        )?;
+        let config = builder.with_env_prefix("IMOP").build()?;
         Ok(config)
     })
 }

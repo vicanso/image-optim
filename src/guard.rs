@@ -14,15 +14,17 @@
 
 use crate::config::must_get_config;
 use crate::metrics;
+use crate::playground;
 use ctor::ctor;
 use once_cell::sync::OnceCell;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::env;
 use std::fmt;
 use std::sync::Arc;
 use tibba_error::Error;
-use tibba_hook::{BoxFuture, Task, register_task};
+use tibba_runtime::{BoxFuture, Task, register_task};
 use tracing::{info, warn};
 
 type Result<T> = std::result::Result<T, Error>;
@@ -118,13 +120,40 @@ fn build_registry(cfg: GuardConfig) -> GuardRegistry {
     GuardRegistry { default, by_source }
 }
 
+const SOURCE_ALLOWLIST_ENV_PREFIX: &str = "IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__";
+
+/// Lowercased names of the sources whose
+/// `IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__<NAME>` is set to an empty string.
+/// tibba-config ignores empty env values, so this documented "explicitly
+/// unrestricted" opt-out never reaches `GuardConfig` and has to be picked up
+/// from the environment directly.
+fn unrestricted_sources(vars: impl Iterator<Item = (String, String)>) -> Vec<String> {
+    vars.filter(|(_, value)| value.is_empty())
+        .filter_map(|(key, _)| {
+            key.strip_prefix(SOURCE_ALLOWLIST_ENV_PREFIX)
+                .filter(|name| !name.is_empty())
+                .map(str::to_lowercase)
+        })
+        .collect()
+}
+
 fn load() -> Result<()> {
     let app_config = must_get_config();
     let cfg = app_config
         .sub_config("guard")
         .try_deserialize::<GuardConfig>()
         .unwrap_or_default();
-    let registry = build_registry(cfg);
+    let mut registry = build_registry(cfg);
+    for name in unrestricted_sources(env::vars()) {
+        registry.by_source.insert(name, Vec::new());
+    }
+    // playground uploads are named by the server and live in their own
+    // directory, the allowlist of the real storages must not apply to them
+    if playground::is_enabled() {
+        registry
+            .by_source
+            .insert(playground::SOURCE.to_string(), Vec::new());
+    }
     info!(
         category = "guard",
         default_prefixes = ?registry.default,
@@ -204,6 +233,19 @@ mod tests {
             "logos/".into(),
         ]);
         assert_eq!(out, vec!["users/", "thumbs/", "logos/"]);
+    }
+
+    #[test]
+    fn unrestricted_sources_only_picks_empty_overrides() {
+        let vars = [
+            ("IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__USERS", ""),
+            ("IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__THUMBS", "sm/,md/"),
+            ("IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__", ""),
+            ("IMOP__GUARD__DEFAULT_PREFIX_ALLOWLIST", ""),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()));
+        assert_eq!(unrestricted_sources(vars), vec!["users"]);
     }
 
     #[test]

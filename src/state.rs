@@ -19,10 +19,10 @@ use once_cell::sync::{Lazy, OnceCell};
 use std::sync::Arc;
 use std::time::Duration;
 use tibba_error::Error;
-use tibba_hook::{BoxFuture, Task, register_task};
-use tibba_performance::get_process_system_info;
-use tibba_scheduler::{Job, register_job_task};
-use tibba_state::AppState;
+use tibba_runtime::{
+    AppState, BoxFuture, Job, Task, current_process_system_info_async, register_job_task,
+    register_task,
+};
 use tibba_util::is_production;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -47,16 +47,13 @@ static PERFORMANCE: Lazy<RwLock<Performance>> = Lazy::new(|| RwLock::new(Perform
 pub fn get_app_state() -> &'static AppState {
     STATE.get_or_init(|| {
         let basic_config = must_get_basic_config();
-        AppState::new(
-            basic_config.processing_limit,
-            basic_config.commit_id.clone(),
-        )
+        AppState::new(basic_config.commit_id.clone())
+            .with_processing_limit(basic_config.processing_limit)
     })
 }
 
 async fn update_performance() {
-    let pid = std::process::id() as usize;
-    let process_system_info = get_process_system_info(pid);
+    let process_system_info = current_process_system_info_async().await;
 
     let mb = 1024 * 1024;
     let mut data = PERFORMANCE.write().await;

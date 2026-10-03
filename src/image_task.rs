@@ -105,9 +105,9 @@ fn map_err(err: impl ToString) -> Error {
 
 /// Drive `run_with_image` on a dedicated blocking thread so the encode/decode
 /// pipeline (libjxl, rav1e/AVIF, mozjpeg, image-rs resize/sharpen — all sync
-/// CPU-bound) can't starve the tokio I/O workers. imageoptimize 0.5.3 only
-/// inserts `block_in_place` when its `bin` feature is enabled, and that
-/// feature drags in clap/glob/num_cpus we don't want, so we wrap it here.
+/// CPU-bound) can't starve the tokio I/O workers. imageoptimize only inserts
+/// `block_in_place` when its optional `tokio` feature is enabled; we leave it
+/// off and run the pipeline on the blocking pool here instead.
 async fn run_image_blocking(image: ProcessImage, tasks: Vec<Vec<String>>) -> Result<ProcessImage> {
     let handle = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || handle.block_on(run_with_image(image, tasks)))
@@ -351,9 +351,8 @@ pub enum Op {
 /// for running `sanitize_storage_path` + `guard::enforce_prefix` first so we
 /// never cache a value for an attacker-controlled path.
 #[cached(
-    size = 200,
-    ttl = 1800,
-    result = true,
+    max_size = 200,
+    ttl_secs = 1800,
     sync_writes = "by_key",
     key = "(Option<String>, String)",
     convert = r#"{ (source.map(str::to_owned), path.to_owned()) }"#
@@ -368,7 +367,7 @@ async fn load_watermark_b64(source: Option<&str>, path: &str) -> Result<String> 
     Ok(STANDARD.encode(bytes.to_bytes()))
 }
 
-#[cached(size = 1000, ttl = 1800, result = true, sync_writes = "by_key")]
+#[cached(max_size = 1000, ttl_secs = 1800, sync_writes = "by_key")]
 pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult, bool)> {
     let started = std::time::Instant::now();
     match run_image_task_inner(params).await {
@@ -380,7 +379,7 @@ pub async fn run_image_task(params: ImageTaskParams) -> Result<(ImageTaskResult,
             Ok((result, private))
         }
         Err(e) => {
-            metrics::inc_errors(&e.category);
+            metrics::inc_errors(e.category());
             Err(e)
         }
     }

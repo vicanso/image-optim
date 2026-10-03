@@ -13,13 +13,14 @@
 // limitations under the License.
 
 use crate::config::must_get_config;
+use crate::playground;
 use ctor::ctor;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tibba_error::Error;
-use tibba_hook::{BoxFuture, Task, register_task};
 use tibba_opendal::{Storage, new_opendal_storage, new_opendal_storage_from_url};
+use tibba_runtime::{BoxFuture, Task, register_task};
 use tracing::info;
 
 type Result<T> = std::result::Result<T, Error>;
@@ -83,7 +84,7 @@ impl Task for DalTask {
 
             info!(
                 schema = ?info.scheme(),
-                full_capability = ?info.full_capability(),
+                capability = ?info.capability(),
                 "open dal storage init success"
             );
 
@@ -94,10 +95,17 @@ impl Task for DalTask {
                 info!(
                     source = %name,
                     schema = ?info.scheme(),
-                    full_capability = ?info.full_capability(),
+                    capability = ?info.capability(),
                     "open dal named storage init success"
                 );
                 named.insert(name, storage);
+            }
+            // uploads of the web playground, reachable as `?source=playground`
+            if let Some(url) = playground::storage_url() {
+                named.insert(
+                    playground::SOURCE.to_string(),
+                    build_storage_from_url(&url)?,
+                );
             }
             NAMED_STORAGES
                 .set(named)

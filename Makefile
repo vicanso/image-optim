@@ -10,9 +10,9 @@ lint:
 fmt:
 	cargo fmt --all --
 dev:
-	bacon run
+	RUST_ENV=dev bacon run
 dev-debug:
-	LOG_LEVEL=5 cargo run
+	RUST_ENV=dev LOG_LEVEL=5 cargo run
 
 release:
 	cargo build --release 

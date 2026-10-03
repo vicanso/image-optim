@@ -9,11 +9,13 @@ use axum::middleware::from_fn_with_state;
 use std::env;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use tibba_hook::{run_after_tasks, run_before_tasks};
+use std::time::Duration;
 use tibba_middleware::{entry, processing_limit, stats};
-use tibba_scheduler::run_scheduler_jobs;
+use tibba_runtime::{
+    ShutdownTimeouts, install_shutdown_signal, run_after_tasks_with, run_before_tasks,
+    run_scheduler_jobs, shutdown_token,
+};
 use tibba_util::is_development;
-use tokio::signal;
 use tower::ServiceBuilder;
 use tracing::{Level, error, info};
 use tracing_subscriber::FmtSubscriber;
@@ -24,6 +26,7 @@ mod guard;
 mod image;
 mod image_task;
 mod metrics;
+mod playground;
 mod preset;
 mod router;
 mod state;
@@ -76,32 +79,10 @@ fn init_logger() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-    info!("signal received, starting graceful shutdown");
-}
-
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // SIGINT/SIGTERM trigger the process-wide shutdown token, which both the
+    // http server and the scheduler subscribe to
+    install_shutdown_signal();
     run_before_tasks().await?;
     run_scheduler_jobs().await?;
     metrics::init();
@@ -132,7 +113,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(shutdown_token().cancelled_owned())
     .await?;
     Ok(())
 }
@@ -142,7 +123,12 @@ async fn start() {
     if let Err(e) = run().await {
         error!(category = "launch_app", message = e.to_string())
     }
-    if let Err(e) = run_after_tasks().await {
+    // the stop_app task drains for 10s in production, which exceeds the
+    // default budget (5s per task, 10s total) of run_after_tasks
+    let timeouts = ShutdownTimeouts::new()
+        .with_per_task(Duration::from_secs(15))
+        .with_total(Duration::from_secs(20));
+    if let Err(e) = run_after_tasks_with(timeouts).await {
         error!(category = "run_after_tasks", message = e.to_string(),);
     }
 }

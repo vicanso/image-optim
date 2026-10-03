@@ -14,6 +14,7 @@
 
 use crate::image::new_image_router;
 use crate::metrics;
+use crate::playground::new_playground_router;
 use crate::state::get_app_state;
 use axum::Router;
 use axum::http::{HeaderValue, header};
@@ -33,14 +34,33 @@ async fn metrics_handler() -> Response {
     res
 }
 
+/// tibba-router-common 0.3 replaced `/ping` with `/healthz` and `/readyz`.
+/// Keep `/ping` so existing health checks (Dockerfile HEALTHCHECK, probes)
+/// continue to work.
+async fn ping() -> Result<&'static str> {
+    if !get_app_state().is_running() {
+        return Err(Error::new("Server is not running")
+            .with_category("common_router")
+            .with_status(503));
+    }
+    Ok("pong")
+}
+
 pub fn new_router() -> Result<Router> {
     let common_router = new_common_router(CommonRouterParams {
         state: get_app_state(),
         cache: None,
+        readiness: None,
     });
 
-    Ok(Router::new()
+    let router = Router::new()
         .nest("/images", new_image_router())
         .route("/metrics", get(metrics_handler))
-        .merge(common_router))
+        .route("/ping", get(ping))
+        .merge(common_router);
+
+    Ok(match new_playground_router() {
+        Some(playground_router) => router.merge(playground_router),
+        None => router,
+    })
 }

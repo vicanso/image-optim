@@ -24,7 +24,7 @@ A pre-commit hook (installed via `make hooks`) runs `make fmt && make lint` befo
 
 ## Architecture
 
-The service is a single Axum/Tokio HTTP server on port 3000 with 7 modules:
+The service is a single Axum/Tokio HTTP server on port 3000 built from these modules:
 
 - **`main.rs`** — entry point, Tokio runtime setup, graceful shutdown (SIGTERM/SIGINT with 10s drain)
 - **`router.rs`** — Axum router; all image endpoints live under `/images/*`
@@ -33,6 +33,7 @@ The service is a single Axum/Tokio HTTP server on port 3000 with 7 modules:
 - **`config.rs`** — TOML config loaded from `configs/` directory; env vars prefixed `IMOP__` override fields (see Configuration below for the separator rules)
 - **`dal.rs`** — storage abstraction via OpenDAL (local filesystem by default; S3-compatible via `IMOP__OPENDAL__URL`)
 - **`state.rs`** — shared `AppState`; tracks CPU/memory/IO metrics every 60s; enforces `processing_limit` concurrency cap
+- **`playground.rs`** — web playground: serves `web/playground.html` (embedded with `include_str!`), accepts uploads into a temp dir, exposes them to `/images/*` as the reserved named storage `playground`, and deletes them with a scheduled job after `playground.ttl`
 
 **API endpoints** (all GET with query params):
 - `/images/optim` — compress/optimize, optional format conversion
@@ -40,6 +41,10 @@ The service is a single Axum/Tokio HTTP server on port 3000 with 7 modules:
 - `/images/watermark` — add watermark (Base64-encoded) with positioning
 - `/images/crop` — crop a rectangular region
 - `/images/command` — returns Markdown API docs
+
+**Playground** (only when `playground.enabled`):
+- `GET /playground` — the page (`/` redirects to it); `GET /playground/font.woff2` — its embedded font
+- `POST /playground/upload` — multipart field `file`; stores `pg-<uuid>.<ext>` and returns the `file`/`source` to pass to `/images/*`
 
 ## Configuration
 
@@ -50,7 +55,7 @@ Env var convention: every level boundary uses `__` (double underscore); a single
 Key env vars:
 | Variable | Default | Description |
 |---|---|---|
-| `RUST_ENV` | `dev` | Selects `configs/{env}.toml` |
+| `RUST_ENV` | `production` | Selects `configs/{env}.toml`; `make dev` sets it to `dev` |
 | `IMOP__OPENDAL__URL` | `file://~/Downloads` | Default storage backend URL |
 | `IMOP__OPENDAL__<NAME>__URL` | — | Extra named storage; selected by `?source=<name>` |
 | `IMOP__OPTIM__QUALITY` | `80` | JPEG/WebP quality 0–100 |
@@ -59,6 +64,11 @@ Key env vars:
 | `IMOP__BASIC__MAX_SOURCE_PIXELS` | `100000000` | Reject decoded sources whose `width*height` exceeds this (0 = off) |
 | `IMOP__GUARD__DEFAULT_PREFIX_ALLOWLIST` | `[]` | CSV (env) or TOML list of allowed path prefixes for the default storage; empty = unrestricted; named storages inherit this when they have no own entry |
 | `IMOP__GUARD__SOURCE_PREFIX_ALLOWLIST__<NAME>` | — | Per-named-storage override; explicit empty string opts that source out of restrictions |
+| `IMOP__PLAYGROUND__ENABLED` | `true` | Serve the web playground and its upload endpoint |
+| `IMOP__PLAYGROUND__DIR` | — | Upload dir; empty = `<system temp dir>/image-optim-playground` |
+| `IMOP__PLAYGROUND__MAX_UPLOAD_BYTES` | `10485760` | Per-file upload cap |
+| `IMOP__PLAYGROUND__MAX_TOTAL_BYTES` | `536870912` | Cap on all stored uploads; further uploads get 507 |
+| `IMOP__PLAYGROUND__TTL` | `1h` | Uploads older than this are removed by the cleanup job |
 | `IMOP__THREADS` | auto | Tokio worker thread count |
 
 ## Linter Rules

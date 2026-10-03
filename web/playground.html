@@ -1,0 +1,2340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>image-optim 试用台</title>
+<meta name="description" content="上传一张图片，试试压缩、转格式、缩放、裁剪和水印。每一步都是对 image-optim 接口的真实调用。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2356E0FF'/%3E%3Cstop offset='.5' stop-color='%237A8BFF'/%3E%3Cstop offset='1' stop-color='%23FF7EB3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M9 13h4V9M23 19h-4v4M13 13 8 8M19 19l5 5' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+// pick the theme before the first paint: saved choice, else the system setting
+(() => {
+  let theme;
+  try { theme = localStorage.getItem('image-optim-theme'); } catch (err) { /* storage blocked */ }
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
+<style>
+/* Mona Sans, Copyright (c) 2023 GitHub, SIL Open Font License 1.1 */
+@font-face {
+  font-family: "Mona Sans";
+  src: url("playground/font.woff2") format("woff2");
+  font-weight: 200 900;
+  font-stretch: 75% 125%;
+  font-display: swap;
+}
+
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #121317;
+  --surface: #1a1c21;
+  --surface-hi: #33373f;
+  --field: #24272d;
+  --field-strong: #3a3e47;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --text: #f2f3f5;
+  --text-2: #aab0ba;
+  --text-3: #7f8590;
+  --accent: #8292ff;
+  --accent-soft: rgba(130, 146, 255, 0.16);
+  --good: #45d6a0;
+  --good-soft: rgba(69, 214, 160, 0.14);
+  --bad: #ff8a7d;
+  --bad-soft: rgba(255, 138, 125, 0.14);
+  --inverse: #f2f3f5;
+  --on-inverse: #121317;
+  --check-a: #1c1e23;
+  --check-b: #24272d;
+  --glass: rgba(26, 28, 33, 0.72);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 60px -36px rgba(0, 0, 0, 0.8);
+  --ambient: 0.38;
+  --glow: 0.3;
+  --spectrum: #56e0ff, #7a8bff, #c084fc, #ff7eb3, #ffb86b, #56e0ff;
+  --font: "Mona Sans", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --gutter: clamp(16px, 3.4vw, 40px);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --surface-hi: #ffffff;
+  --field: #eef0f4;
+  --field-strong: #d9dde5;
+  --line: rgba(17, 20, 28, 0.08);
+  --line-strong: rgba(17, 20, 28, 0.2);
+  --text: #12141a;
+  --text-2: #565c68;
+  --text-3: #858b96;
+  --accent: #4a5be8;
+  --accent-soft: rgba(74, 91, 232, 0.12);
+  --good: #0b9567;
+  --good-soft: rgba(11, 149, 103, 0.11);
+  --bad: #d2412f;
+  --bad-soft: rgba(210, 65, 47, 0.1);
+  --inverse: #12141a;
+  --on-inverse: #ffffff;
+  --check-a: #eceef2;
+  --check-b: #f8f9fb;
+  --glass: rgba(255, 255, 255, 0.7);
+  --shadow: 0 1px 2px rgba(17, 20, 28, 0.04), 0 24px 50px -32px rgba(17, 20, 28, 0.28);
+  --ambient: 0.46;
+  --glow: 0.4;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; background: var(--bg); scrollbar-color: var(--field-strong) transparent; }
+
+::selection { background: color-mix(in srgb, var(--accent) 34%, transparent); color: var(--text); }
+
+body {
+  position: relative;
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 15px/1.6 var(--font);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* keep the landing as one composed screen when the viewport has room.
+   body stays a block: the nav uses margin:auto, which would shrink it
+   to its content if body became a flex column. */
+body[data-state="landing"] > main {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  min-height: calc(100vh - 72px);
+}
+
+[hidden] { display: none !important; }
+
+a { color: inherit; }
+
+button, input { font: inherit; color: inherit; }
+
+h1, h2, p { margin: 0; }
+
+.i {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── ambient light: a blurred wash of the image itself ───── */
+
+.ambient {
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(92vh, 860px);
+  z-index: 0;
+  background: center / cover no-repeat;
+  filter: blur(96px) saturate(1.7);
+  opacity: var(--ambient);
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(#000 25%, transparent);
+  mask-image: linear-gradient(#000 25%, transparent);
+  transition: opacity 0.5s;
+}
+
+.nav, main { position: relative; z-index: 1; }
+
+/* ── nav ─────────────────────────────────────────────────── */
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 18px var(--gutter);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.brand svg { width: 26px; height: 26px; }
+
+.nav-links { display: flex; align-items: center; gap: 4px; }
+
+.nav-links a {
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 14px;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-links a:hover { background: var(--line); color: var(--text); }
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-left: 6px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.icon-btn:hover { border-color: var(--line-strong); color: var(--text); }
+
+:root[data-theme="dark"] .icon-btn .to-dark,
+:root[data-theme="light"] .icon-btn .to-light { display: none; }
+
+/* ── buttons ─────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s, border-color 0.15s, background 0.15s;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn.primary { background: var(--inverse); color: var(--on-inverse); }
+
+.btn.primary:hover { box-shadow: 0 10px 28px -10px var(--inverse); }
+
+.btn.ghost { border-color: var(--line); background: var(--field); color: var(--text); }
+
+.btn.ghost:hover { border-color: var(--line-strong); }
+
+.btn.sm { height: 34px; padding: 0 14px; font-size: 13px; }
+
+.btn.sm .i { width: 15px; height: 15px; }
+
+.btn[disabled], .btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+
+.btn canvas { width: 36px; height: 24px; margin-left: -10px; border-radius: 6px; }
+
+/* ── hero (landing) ──────────────────────────────────────── */
+
+.hero {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(8px, 2.6vh, 28px) var(--gutter) 72px;
+  text-align: center;
+}
+
+.hero h1 {
+  max-width: 18em;
+  margin-inline: auto;
+  font-size: clamp(24px, 2.4vw, 34px);
+  font-weight: 620;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.lede {
+  max-width: 34em;
+  margin: 14px auto 0;
+  color: var(--text-2);
+  font-size: clamp(16px, 1.35vw, 18px);
+  line-height: 1.7;
+  text-wrap: balance;
+}
+
+/* the drop zone: a glass card inside a slowly turning spectrum ring */
+.dropzone {
+  position: relative;
+  max-width: 860px;
+  margin: clamp(22px, 3.2vh, 34px) auto 0;
+  border-radius: 30px;
+  isolation: isolate;
+}
+
+.dropzone::before, .dropzone::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  background: conic-gradient(from var(--angle), var(--spectrum));
+  pointer-events: none;
+}
+
+.dropzone::before {
+  inset: 0;
+  z-index: 2;
+  padding: 1.5px;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  transition: padding 0.2s;
+}
+
+.dropzone::after {
+  inset: 10px;
+  z-index: -1;
+  filter: blur(42px);
+  opacity: var(--glow);
+  transition: opacity 0.25s;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dropzone::before, .dropzone::after { animation: turn 9s linear infinite; }
+  @keyframes turn { to { --angle: 360deg; } }
+}
+
+.dropzone.is-over::before { padding: 3px; }
+
+.dropzone.is-over::after { opacity: 0.6; }
+
+.dz {
+  display: grid;
+  justify-items: stretch;
+  padding: 12px 12px 14px;
+  border-radius: inherit;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  backdrop-filter: blur(28px) saturate(1.4);
+}
+
+/* the sample, cropped like a still: the ring finally frames a picture */
+.poster-wrap {
+  position: relative;
+  min-width: 0;
+  height: clamp(188px, 32vh, 300px);
+  overflow: hidden;
+  border-radius: 20px;
+  box-shadow: 0 22px 40px -28px rgba(0, 0, 0, 0.72);
+}
+
+.poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 72%;
+  opacity: 0;
+}
+
+.poster.is-ready { opacity: 1; transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.35s ease; }
+
+.dropzone.is-over .poster.is-ready { filter: saturate(1.28) brightness(1.06); }
+
+@media (prefers-reduced-motion: reduce) {
+  .poster, .poster.is-ready { opacity: 1; transition: none; }
+}
+
+.poster-wrap .poster-tag { top: auto; right: auto; bottom: 12px; left: 12px; }
+
+.dock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 28px;
+  padding: 16px 8px 0;
+  text-align: left;
+}
+
+.dock-copy { min-width: 0; }
+
+.dz h2 { font-size: clamp(18px, 1.7vw, 22px); font-weight: 650; letter-spacing: -0.01em; }
+
+.dz .how { margin-top: 2px; color: var(--text-2); }
+
+.dz .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 0; }
+
+.dz .limits { margin-top: 12px; padding: 0 8px; color: var(--text-2); font-size: 13px; text-align: left; text-wrap: balance; }
+
+.progress { justify-self: center; width: min(340px, 100%); margin-top: 16px; }
+
+.progress .track { height: 4px; border-radius: 2px; background: var(--field-strong); overflow: hidden; }
+
+.progress .fill { width: 0; height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.15s linear; }
+
+.progress p { margin-top: 10px; color: var(--text-2); font-size: 14px; }
+
+.notice {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 14px;
+  text-align: left;
+}
+
+.dz .notice { justify-self: center; width: min(100% - 8px, 560px); margin-top: 14px; }
+
+.points {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px clamp(20px, 3vw, 44px);
+  max-width: 860px;
+  margin: 32px auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.points li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 2px 14px; }
+
+.points .i { grid-row: 1 / 3; width: 20px; height: 20px; margin-top: 3px; color: var(--accent); }
+
+.points b { font-weight: 600; }
+
+.points span { color: var(--text-2); font-size: 14px; line-height: 1.65; text-wrap: pretty; }
+
+/* ── bench ───────────────────────────────────────────────── */
+
+.bench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 6px var(--gutter) 72px;
+}
+
+.main { display: grid; gap: 20px; min-width: 0; }
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* viewer */
+
+.viewer { position: relative; border-radius: 24px; overflow: hidden; }
+
+.viewer-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 12px 12px 18px;
+}
+
+.file { min-width: 0; }
+
+.file b {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file span { color: var(--text-3); font-size: 12.5px; }
+
+.file span + span { margin-left: 10px; }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.seg {
+  display: inline-flex;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--field);
+}
+
+.seg label { position: relative; display: block; flex: 1; }
+
+.seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+
+.seg span {
+  display: block;
+  padding: 4px 13px;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  text-align: center;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.seg input:checked + span { background: var(--surface-hi); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22); }
+
+.seg input:disabled + span { opacity: 0.38; }
+
+.seg input:disabled { cursor: not-allowed; }
+
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.seg.full { display: flex; }
+
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: min(60vh, 580px);
+  margin: 0 10px;
+  border-radius: 16px;
+  overflow: hidden;
+  background-color: var(--check-a);
+  background-image:
+    linear-gradient(45deg, var(--check-b) 25%, transparent 25%, transparent 75%, var(--check-b) 75%),
+    linear-gradient(45deg, var(--check-b) 25%, transparent 25%, transparent 75%, var(--check-b) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+
+.stage.is-actual { display: block; overflow: auto; }
+
+.frame {
+  --cut: 50%;
+  position: relative;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  line-height: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.2s;
+}
+
+.stage.is-actual .frame { display: inline-block; max-width: none; max-height: none; }
+
+.frame img {
+  display: block;
+  max-width: 100%;
+  max-height: min(60vh, 580px);
+  -webkit-user-drag: none;
+}
+
+.stage.is-actual .frame img { max-width: none; max-height: none; }
+
+.frame[data-view="compare"] { cursor: ew-resize; touch-action: pan-y; }
+
+.frame[data-view="compare"] #imgAfter {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  clip-path: inset(0 0 0 var(--cut));
+}
+
+.frame[data-view="after"] #imgBefore,
+.frame[data-view="before"] #imgAfter,
+.frame:not([data-view="compare"]) .cut,
+.frame:not([data-view="compare"]) .tag { display: none; }
+
+.frame.is-stale { opacity: 0.4; }
+
+.cut {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--cut);
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+
+.cut button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #14161b;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  touch-action: none;
+  transition: transform 0.15s;
+}
+
+.cut button:hover { transform: translate(-50%, -50%) scale(1.08); }
+
+.tag {
+  position: absolute;
+  top: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.58);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  pointer-events: none;
+}
+
+.tag.before { left: 10px; }
+
+.tag.after { right: 10px; }
+
+.busy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 2px;
+  overflow: hidden;
+}
+
+.busy::after {
+  content: "";
+  position: absolute;
+  inset: 0 55% 0 0;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .busy::after { animation: sweep 1s ease-in-out infinite alternate; }
+  @keyframes sweep { to { inset: 0 0 0 55%; } }
+}
+
+.stage-note { max-width: 26em; padding: 24px; color: var(--text-2); font-size: 15px; line-height: 1.7; text-align: center; }
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 28px;
+  padding: 16px 20px 6px;
+}
+
+.readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.readout .from { color: var(--text-3); font-size: 0.56em; font-weight: 500; letter-spacing: 0; }
+
+.readout .i { width: 0.56em; height: 0.56em; color: var(--text-3); }
+
+.readout .to { font-stretch: 112%; transition: font-stretch 0.5s ease; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.chip:empty { display: none; }
+
+.chip.good { background: var(--good-soft); color: var(--good); }
+
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+
+.meta { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; color: var(--text-3); font-size: 13px; }
+
+.meta div { display: flex; gap: 6px; }
+
+.meta dt, .meta dd { margin: 0; }
+
+.meta dd { color: var(--text-2); font-weight: 500; }
+
+.footline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 20px;
+  padding: 6px 20px 16px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.footline .notice { flex: 1 1 100%; }
+
+/* formats */
+
+.sec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 4px 4px 12px; }
+
+.sec-head h2, .call h2 { font-size: 15px; font-weight: 600; }
+
+.sec-head p { color: var(--text-3); font-size: 13px; }
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  gap: 9px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+.tile:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+
+.tile input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+
+.tile:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.tile:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tile .name { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 20px; color: var(--text-2); font-size: 13px; font-weight: 600; }
+
+.tile .chip { height: 20px; padding: 0 8px; font-size: 11.5px; }
+
+.tile .size { min-height: 26px; font-size: 21px; font-weight: 650; line-height: 1.2; letter-spacing: -0.01em; white-space: nowrap; }
+
+.tile .meter { height: 4px; border-radius: 2px; background: var(--field); overflow: hidden; }
+
+.tile .meter i { display: block; width: 0; height: 100%; border-radius: 2px; background: var(--text-3); transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+.tile:has(input:checked) .meter i { background: var(--accent); }
+
+.tile.is-bigger .meter i { background: var(--bad); }
+
+.tile .foot { display: flex; justify-content: space-between; gap: 6px; color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+
+.tile.is-idle .size, .tile.is-error .size { color: var(--text-3); }
+
+.tile.is-loading .size {
+  width: 68%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--field) 25%, var(--field-strong) 50%, var(--field) 75%) 0 0 / 200% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tile.is-loading .size { animation: shimmer 1.2s linear infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+}
+
+/* the call */
+
+.call { padding: 16px 18px 18px; }
+
+.call code {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--field);
+  font: 12.5px/1.7 var(--mono);
+  word-break: break-all;
+}
+
+.call code b { flex: none; padding: 0 7px; border-radius: 6px; background: var(--good-soft); color: var(--good); font-weight: 600; }
+
+.call .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.call .hint { margin-top: 12px; color: var(--text-3); font-size: 13px; }
+
+.call .hint b { color: var(--text-2); font-weight: 600; }
+
+/* inspector */
+
+.inspector { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px; scrollbar-width: thin; }
+
+.group { min-width: 0; margin: 0; padding: 0; border: 0; }
+
+.group + .group { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+
+.group > legend { float: left; width: 100%; margin-bottom: 12px; padding: 0; }
+
+.group > legend + * { clear: both; }
+
+.group h2, .more summary { color: var(--text-2); font-size: 13px; font-weight: 600; }
+
+.ops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+.op {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 12px 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--field);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.op .i { width: 20px; height: 20px; }
+
+.op input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+
+.op:hover { color: var(--text); }
+
+.op:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+.op:has(input:checked) .i { color: var(--accent); }
+
+.op:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.lead { margin-top: 12px; color: var(--text-3); font-size: 13px; }
+
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+
+.fields .wide { grid-column: 1 / -1; }
+
+.field { display: block; min-width: 0; }
+
+.field > span { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: var(--text-2); font-size: 12.5px; }
+
+.field output { color: var(--text); font-weight: 600; }
+
+.field input[type="number"] {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--text);
+  font-size: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field input[type="number"]::placeholder { color: var(--text-3); }
+
+.field input[type="number"]:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.field input[type="color"] {
+  display: block;
+  width: 100%;
+  height: 38px;
+  padding: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--field);
+  cursor: pointer;
+}
+
+input[type="range"] {
+  --a: 0%;
+  --b: 50%;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--field-strong) var(--a), var(--accent) var(--a), var(--accent) var(--b), var(--field-strong) var(--b));
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--field-strong) var(--a), var(--accent) var(--a), var(--accent) var(--b), var(--field-strong) var(--b));
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  transition: transform 0.12s;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
+
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; cursor: pointer; }
+
+.switch input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--field-strong);
+  cursor: pointer;
+  transition: background 0.18s;
+}
+
+.switch input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s;
+}
+
+.switch input:checked { background: var(--accent); }
+
+.switch input:checked::after { transform: translateX(16px); }
+
+.spots { display: grid; grid-template-columns: repeat(3, 30px); gap: 5px; width: max-content; }
+
+.spots label { position: relative; display: block; width: 30px; height: 26px; }
+
+.spots input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+
+.spots span { display: block; height: 100%; border-radius: 8px; background: var(--field); transition: background 0.15s; }
+
+.spots label:hover span { background: var(--field-strong); }
+
+.spots input:checked + span { background: var(--accent); }
+
+.spots input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.wm img { max-width: 72px; max-height: 38px; border-radius: 8px; background: #fff; }
+
+.more summary { display: flex; align-items: center; justify-content: space-between; list-style: none; cursor: pointer; }
+
+.more summary::-webkit-details-marker { display: none; }
+
+.more summary .i { width: 16px; height: 16px; transition: transform 0.2s; }
+
+.more[open] summary .i { transform: rotate(180deg); }
+
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.linkish:hover { color: var(--text); }
+
+/* ── drag veil ───────────────────────────────────────────── */
+
+.veil {
+  position: fixed;
+  inset: 12px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 22px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+/* ── narrow screens ──────────────────────────────────────── */
+
+@media (max-width: 980px) {
+  .bench { display: flex; flex-direction: column; align-items: stretch; }
+  .main { display: contents; }
+  .viewer { order: 1; }
+  .inspector { order: 2; position: static; max-height: none; }
+  .formats { order: 3; }
+  .call { order: 4; }
+  .tiles { grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .points { grid-template-columns: minmax(0, 1fr); }
+  .stage, .frame img { height: auto; max-height: 52vh; }
+  .stage { min-height: 200px; }
+  .nav-links a { padding: 6px 8px; }
+  .dock { flex-direction: column; align-items: stretch; padding-inline: 4px; text-align: center; }
+  .dz .actions { justify-content: center; }
+  .dz .actions .btn { flex: 1 1 100%; }
+  .dz .limits { text-align: center; }
+  .poster-wrap { height: 168px; }
+}
+</style>
+</head>
+<body data-state="landing">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#56e0ff"/><stop offset="0.5" stop-color="#7a8bff"/><stop offset="1" stop-color="#ff7eb3"/>
+    </linearGradient>
+    <symbol id="i-optim" viewBox="0 0 24 24"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="m14 10 7-7"/><path d="m3 21 7-7"/></symbol>
+    <symbol id="i-resize" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><path d="M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="8.5" y="9" width="7" height="6" rx="1"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></symbol>
+    <symbol id="i-padding" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" stroke-dasharray="3 3.2"/><rect x="8" y="8" width="8" height="8" rx="1.5"/></symbol>
+    <symbol id="i-watermark" viewBox="0 0 24 24"><path d="M5 21h14"/><path d="M6 17h12v-2a2 2 0 0 0-2-2h-2.4a1.3 1.3 0 0 1-1.3-1.6l.5-2.3a3 3 0 1 0-5.6 0l.5 2.3A1.3 1.3 0 0 1 6.4 13H8"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-handle" viewBox="0 0 24 24"><path d="m9 7-5 5 5 5"/><path d="m15 7 5 5-5 5"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.5"/><path d="M20 4v4.5h-4.5"/><path d="M20 12a8 8 0 0 1-13.7 5.7L4 15.5"/><path d="M4 20v-4.5h4.5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="m14 6 6 6-6 6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  </defs>
+</svg>
+
+<div class="ambient" id="ambient" aria-hidden="true"></div>
+
+<header class="nav">
+  <a class="brand" href="playground">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="url(#brandGrad)"/><path d="M9 13h4V9M23 19h-4v4M13 13 8 8M19 19l5 5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    image-optim
+  </a>
+  <nav class="nav-links" aria-label="相关链接">
+    <a href="images/command">接口文档</a>
+    <a href="https://github.com/vicanso/image-optim" rel="noreferrer">GitHub</a>
+    <button type="button" class="icon-btn" id="theme" aria-label="切换深色或浅色主题">
+      <svg class="i to-light"><use href="#i-sun"/></svg>
+      <svg class="i to-dark"><use href="#i-moon"/></svg>
+    </button>
+  </nav>
+</header>
+
+<main>
+  <section class="hero" id="hero">
+    <h1>体积虽减，形貌如初</h1>
+    <p class="lede">换个格式、调调质量、改尺寸、裁剪、加水印。每一步都是对 image-optim 接口的一次真实调用，结果和调用地址一起给你。</p>
+
+    <div class="dropzone" id="drop">
+      <div class="dz">
+        <div class="poster-wrap">
+          <canvas class="poster" id="poster" width="1500" height="1000" aria-hidden="true"></canvas>
+          <span class="tag poster-tag">示例图</span>
+        </div>
+        <div class="dock">
+          <div class="dock-copy">
+            <h2 id="dropTitle">把图片拖到这里</h2>
+            <p class="how">也可以直接粘贴，或者从电脑里选一张</p>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn primary" id="pick">选择图片</button>
+            <button type="button" class="btn ghost" id="sample"><canvas id="sampleThumb" width="108" height="72" aria-hidden="true"></canvas>用示例图试试</button>
+          </div>
+        </div>
+        <div class="progress" id="progress" hidden>
+          <div class="track"><div class="fill" id="progressFill"></div></div>
+          <p id="progressText" role="status"></p>
+        </div>
+        <p class="notice" id="dropError" role="alert" hidden></p>
+        <p class="limits" id="limits"></p>
+      </div>
+    </div>
+
+    <ul class="points">
+      <li><svg class="i"><use href="#i-layers"/></svg><b>五种格式一次比完</b><span>同一张图输出成五种格式，体积并排比较，谁最小一目了然。</span></li>
+      <li><svg class="i"><use href="#i-crop"/></svg><b>不只是压缩</b><span>缩放、裁剪、扩展画布、加水印，还有旋转、模糊和锐化。</span></li>
+      <li><svg class="i"><use href="#i-link"/></svg><b>带着接口地址走</b><span>每个结果都附上调用地址，复制过去就能用在自己的项目里。</span></li>
+    </ul>
+  </section>
+
+  <section class="bench" id="bench" hidden>
+    <div class="main">
+      <div class="viewer card" id="viewer">
+        <div class="viewer-top">
+          <p class="file"><b id="fileName"></b><span id="fileDims"></span><span id="fileSize"></span></p>
+          <div class="tools">
+            <div class="seg" role="radiogroup" aria-label="查看方式">
+              <label><input type="radio" name="view" value="compare" checked><span>对比</span></label>
+              <label><input type="radio" name="view" value="after"><span>结果</span></label>
+              <label><input type="radio" name="view" value="before"><span>原图</span></label>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="缩放">
+              <label><input type="radio" name="zoom" value="fit" checked><span>适应</span></label>
+              <label><input type="radio" name="zoom" value="actual"><span>100%</span></label>
+            </div>
+            <button type="button" class="btn ghost sm" id="replace"><svg class="i"><use href="#i-swap"/></svg>换一张</button>
+          </div>
+        </div>
+        <div class="stage" id="stage">
+          <div class="busy" id="busy" hidden></div>
+          <div class="frame" id="frame" data-view="compare">
+            <img id="imgBefore" alt="原图" draggable="false">
+            <img id="imgAfter" alt="处理结果" draggable="false">
+            <div class="cut"><button type="button" id="cut" role="slider" aria-label="对比分割线，左边是原图，右边是结果" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><svg class="i"><use href="#i-handle"/></svg></button></div>
+            <span class="tag before">原图</span>
+            <span class="tag after" id="afterTag">结果</span>
+          </div>
+          <p class="stage-note" id="stageNote" hidden></p>
+        </div>
+        <div class="stats">
+          <p class="readout">
+            <span class="from" id="readFrom"></span>
+            <svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg>
+            <span class="to" id="readTo"></span>
+            <span class="chip" id="readDelta"></span>
+          </p>
+          <dl class="meta" id="meta"></dl>
+        </div>
+        <div class="footline">
+          <span id="stageHint"></span>
+          <span id="expiry"></span>
+          <p class="notice" id="runError" role="alert" hidden></p>
+        </div>
+        <p class="sr-only" id="live" role="status"></p>
+      </div>
+
+      <div class="formats">
+        <div class="sec-head">
+          <div>
+            <h2 id="tilesTitle">输出格式</h2>
+            <p>细条是相对原图的体积，点一下切换格式</p>
+          </div>
+          <button type="button" class="btn ghost sm" id="compareAll"><svg class="i"><use href="#i-layers"/></svg>比较全部格式</button>
+        </div>
+        <fieldset class="tiles" id="tiles" aria-labelledby="tilesTitle"></fieldset>
+      </div>
+
+      <div class="call card">
+        <h2>这次调用的地址</h2>
+        <code><b id="callMethod">GET</b><span id="callUrl"></span></code>
+        <div class="actions">
+          <button type="button" class="btn ghost sm" id="copyUrl"><svg class="i"><use href="#i-copy"/></svg><span>复制地址</span></button>
+          <button type="button" class="btn ghost sm" id="copyCurl"><svg class="i"><use href="#i-copy"/></svg><span>复制 curl 命令</span></button>
+          <a class="btn primary sm" id="download" download><svg class="i"><use href="#i-download"/></svg>下载结果</a>
+        </div>
+        <p class="hint">把 <b>file</b> 换成你自己存储里的图片路径、去掉 <b>source</b>，就是正式环境里的调用。</p>
+      </div>
+    </div>
+
+    <aside class="inspector card" aria-label="处理设置">
+      <form id="controls" autocomplete="off">
+        <fieldset class="group">
+          <legend><h2>要做什么</h2></legend>
+          <div class="ops">
+            <label class="op"><input type="radio" name="op" value="optim" checked><svg class="i"><use href="#i-optim"/></svg>压缩</label>
+            <label class="op"><input type="radio" name="op" value="resize"><svg class="i"><use href="#i-resize"/></svg>缩放</label>
+            <label class="op"><input type="radio" name="op" value="fit"><svg class="i"><use href="#i-fit"/></svg>适应</label>
+            <label class="op"><input type="radio" name="op" value="crop"><svg class="i"><use href="#i-crop"/></svg>裁剪</label>
+            <label class="op"><input type="radio" name="op" value="padding"><svg class="i"><use href="#i-padding"/></svg>画布</label>
+            <label class="op"><input type="radio" name="op" value="watermark"><svg class="i"><use href="#i-watermark"/></svg>水印</label>
+          </div>
+          <p class="lead" id="opLead"></p>
+
+          <div class="fields" data-op="resize" hidden>
+            <label class="field"><span>宽（像素）</span><input type="number" name="resize_w" min="0" max="20000" inputmode="numeric" placeholder="按比例"></label>
+            <label class="field"><span>高（像素）</span><input type="number" name="resize_h" min="0" max="20000" inputmode="numeric" placeholder="按比例"></label>
+          </div>
+
+          <div class="fields" data-op="fit" hidden>
+            <label class="field"><span>最大宽（像素）</span><input type="number" name="fit_w" min="0" max="20000" inputmode="numeric" placeholder="不限"></label>
+            <label class="field"><span>最大高（像素）</span><input type="number" name="fit_h" min="0" max="20000" inputmode="numeric" placeholder="不限"></label>
+          </div>
+
+          <div class="fields" data-op="crop" hidden>
+            <label class="field"><span>左边起点 x</span><input type="number" name="crop_x" min="0" inputmode="numeric"></label>
+            <label class="field"><span>上边起点 y</span><input type="number" name="crop_y" min="0" inputmode="numeric"></label>
+            <label class="field"><span>宽（像素）</span><input type="number" name="crop_w" min="1" inputmode="numeric"></label>
+            <label class="field"><span>高（像素）</span><input type="number" name="crop_h" min="1" inputmode="numeric"></label>
+          </div>
+
+          <div class="fields" data-op="padding" hidden>
+            <label class="field"><span>画布宽（像素）</span><input type="number" name="pad_w" min="1" max="20000" inputmode="numeric"></label>
+            <label class="field"><span>画布高（像素）</span><input type="number" name="pad_h" min="1" max="20000" inputmode="numeric"></label>
+            <label class="field wide"><span>填充颜色</span><input type="color" name="pad_color" value="#ffffff"></label>
+            <label class="switch wide">透明填充<input type="checkbox" name="pad_clear"></label>
+          </div>
+
+          <div class="fields" data-op="watermark" hidden>
+            <div class="field wide">
+              <span>水印图片</span>
+              <div class="wm">
+                <img id="wmThumb" alt="" hidden>
+                <button type="button" class="btn ghost sm" id="wmPick">选择水印图片</button>
+                <button type="button" class="linkish" id="wmSample">用示例水印</button>
+              </div>
+            </div>
+            <div class="field">
+              <span id="spotsLabel">位置</span>
+              <div class="spots" role="radiogroup" aria-labelledby="spotsLabel">
+                <label><input type="radio" name="wm_pos" value="leftTop" aria-label="左上"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="top" aria-label="上"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="rightTop" aria-label="右上"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="left" aria-label="左"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="center" aria-label="正中"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="right" aria-label="右"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="leftBottom" aria-label="左下"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="bottom" aria-label="下"><span></span></label>
+                <label><input type="radio" name="wm_pos" value="rightBottom" aria-label="右下" checked><span></span></label>
+              </div>
+            </div>
+            <label class="field"><span>离边缘（像素）</span><input type="number" name="wm_inset" min="0" max="2000" value="24" inputmode="numeric"></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend><h2>质量</h2></legend>
+          <label class="field">
+            <span>数值越低文件越小 <output id="qualityOut">服务默认</output></span>
+            <input type="range" name="quality" min="1" max="100" value="80">
+          </label>
+          <button type="button" class="linkish" id="qualityReset" style="margin-top:8px" hidden>恢复服务默认</button>
+        </fieldset>
+
+        <details class="group more" id="more">
+          <summary>更多调整<svg class="i"><use href="#i-chevron"/></svg></summary>
+          <div class="fields">
+            <div class="field wide">
+              <span>旋转</span>
+              <div class="seg full">
+                <label><input type="radio" name="rotate" value="" checked><span>不转</span></label>
+                <label><input type="radio" name="rotate" value="90"><span>90°</span></label>
+                <label><input type="radio" name="rotate" value="180"><span>180°</span></label>
+                <label><input type="radio" name="rotate" value="270"><span>270°</span></label>
+              </div>
+            </div>
+            <div class="field wide">
+              <span>翻转</span>
+              <div class="seg full">
+                <label><input type="radio" name="flip" value="" checked><span>不翻</span></label>
+                <label><input type="radio" name="flip" value="h"><span>左右</span></label>
+                <label><input type="radio" name="flip" value="v"><span>上下</span></label>
+              </div>
+            </div>
+            <label class="field wide"><span>模糊 <output data-for="blur">0</output></span><input type="range" name="blur" min="0" max="10" step="0.5" value="0"></label>
+            <label class="field wide"><span>锐化 <output data-for="sharpen">0</output></span><input type="range" name="sharpen" min="0" max="5" step="0.5" value="0"></label>
+            <label class="field wide"><span>亮度 <output data-for="brighten">0</output></span><input type="range" name="brighten" min="-100" max="100" step="5" value="0"></label>
+            <label class="field wide"><span>对比度 <output data-for="contrast">0</output></span><input type="range" name="contrast" min="-50" max="50" step="5" value="0"></label>
+            <label class="switch wide">转成灰度<input type="checkbox" name="gray"></label>
+            <label class="switch wide">去掉 EXIF 等元数据<input type="checkbox" name="strip"></label>
+            <div class="wide"><button type="button" class="linkish" id="resetAll">全部恢复原样</button></div>
+          </div>
+        </details>
+      </form>
+    </aside>
+  </section>
+</main>
+
+<div class="veil" id="veil" hidden>松手就上传这张图片</div>
+
+<input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/jxl,.jxl" hidden>
+<input type="file" id="wmInput" accept="image/png,image/webp,image/jpeg,image/avif,image/gif" hidden>
+
+<script id="config" type="application/json">__PLAYGROUND_CONFIG__</script>
+<script>
+(() => {
+  'use strict';
+
+  const CONFIG = JSON.parse(document.getElementById('config').textContent);
+  // the page lives at <base>/playground, the image endpoints at <base>/images/*
+  const BASE = location.pathname.replace(/\/playground\/?$/, '');
+  const FORMATS = [
+    { id: 'jpeg', label: 'JPEG' },
+    { id: 'png', label: 'PNG' },
+    { id: 'webp', label: 'WebP' },
+    { id: 'avif', label: 'AVIF' },
+    { id: 'jxl', label: 'JPEG XL' },
+  ];
+  const TYPE_EXT = {
+    'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp',
+    'image/avif': 'avif', 'image/jxl': 'jxl', 'image/gif': 'gif',
+  };
+  const OP_LEAD = {
+    optim: '只重新编码，尺寸不变。',
+    resize: '缩放到指定宽高，只填一边时另一边按比例算。',
+    fit: '缩小到不超过指定宽高，保持比例，不会放大。',
+    crop: '从 (x, y) 起裁出一块，坐标原点在左上角。',
+    padding: '把图片居中放到更大的画布上。',
+    watermark: '在图片上叠一张水印，水印按它自己的像素大小叠加。',
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const form = $('controls');
+  const field = (name) => form.elements[name];
+
+  const state = {
+    image: null,      // { blob, name, file, ext, size, width, height, url, viewable }
+    watermark: null,  // { blob, file, url }
+    results: new Map(), // format id -> { key, status, data, error }
+    format: null,
+    qualityTouched: false,
+    generation: 0,
+    abort: null,
+    cut: 50,
+  };
+
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // ── formatting ────────────────────────────────────────────
+
+  function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  }
+
+  // limits are round numbers: "10 MB", not "10.00 MB"
+  function formatLimit(n) {
+    const mb = n / 1024 / 1024;
+    return Number.isInteger(mb) ? `${mb} MB` : formatBytes(n);
+  }
+
+  function formatDuration(seconds) {
+    if (seconds % 3600 === 0) return `${seconds / 3600} 小时`;
+    if (seconds % 60 === 0) return `${seconds / 60} 分钟`;
+    return `${seconds} 秒`;
+  }
+
+  function describeDelta(size, original) {
+    const percent = Math.round((1 - size / original) * 100);
+    if (percent > 0) return `小了 ${percent}%`;
+    if (percent < 0) return `大了 ${-percent}%`;
+    return '几乎没变';
+  }
+
+  function deltaTone(size, original) {
+    const percent = Math.round((1 - size / original) * 100);
+    if (percent > 0) return 'good';
+    return percent < 0 ? 'bad' : '';
+  }
+
+  function labelOf(ext) {
+    if (ext === 'gif') return 'GIF';
+    const format = FORMATS.find((item) => item.id === ext);
+    return format ? format.label : ext.toUpperCase();
+  }
+
+  // narrower digits for a lighter file: wdth 112 (no saving) down to 75
+  function stretchFor(size, original) {
+    const saved = Math.min(Math.max(1 - size / original, 0), 1);
+    return `${Math.round(112 - 37 * saved)}%`;
+  }
+
+  // ── theme and ambient light ───────────────────────────────
+
+  $('theme').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('image-optim-theme', next); } catch (err) { /* storage blocked */ }
+  });
+
+  // the page glows in the colours of whatever picture is on it
+  function setAmbient(source) {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 48;
+      canvas.height = 32;
+      canvas.getContext('2d').drawImage(source, 0, 0, 48, 32);
+      $('ambient').style.backgroundImage = `url(${canvas.toDataURL('image/jpeg', 0.8)})`;
+    } catch (err) { /* keep the previous light */ }
+  }
+
+  function transition(update) {
+    if (document.startViewTransition && !reducedMotion.matches) document.startViewTransition(update);
+    else update();
+  }
+
+  // filled part of a slider: from the left edge, or from the centre for -n..n ranges
+  function paintRange(input) {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    const percent = ((Number(input.value) - min) / (max - min)) * 100;
+    const origin = min < 0 ? 50 : 0;
+    input.style.setProperty('--a', `${Math.min(origin, percent)}%`);
+    input.style.setProperty('--b', `${Math.max(origin, percent)}%`);
+  }
+
+  // ── sample artwork (drawn locally, nothing is fetched) ────
+
+  function mulberry(seed) {
+    return () => {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function drawSample(canvas, grain) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const c = canvas.getContext('2d');
+    const rand = mulberry(20260923);
+
+    const sky = c.createLinearGradient(0, 0, 0, h * 0.78);
+    sky.addColorStop(0, '#0d2f6e');
+    sky.addColorStop(0.45, '#3e78c4');
+    sky.addColorStop(0.8, '#f0a96a');
+    sky.addColorStop(1, '#fbe0a8');
+    c.fillStyle = sky;
+    c.fillRect(0, 0, w, h);
+
+    for (let i = 0; i < 140; i++) {
+      const y = rand() * h * 0.36;
+      c.fillStyle = `rgba(255,255,255,${0.25 + rand() * 0.6})`;
+      c.fillRect(rand() * w, y, w / 900 + rand() * (w / 700), w / 900 + rand() * (w / 700));
+    }
+
+    const sunX = w * 0.66;
+    const sunY = h * 0.6;
+    const glow = c.createRadialGradient(sunX, sunY, 0, sunX, sunY, h * 0.5);
+    glow.addColorStop(0, 'rgba(255,236,170,0.95)');
+    glow.addColorStop(0.12, 'rgba(255,214,120,0.75)');
+    glow.addColorStop(1, 'rgba(255,200,61,0)');
+    c.fillStyle = glow;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = '#fff6d8';
+    c.beginPath();
+    c.arc(sunX, sunY, h * 0.055, 0, Math.PI * 2);
+    c.fill();
+
+    const ridges = ['#7f93c2', '#5b74ad', '#3d5a97', '#24427d', '#12305f', '#0a1f45'];
+    ridges.forEach((color, index) => {
+      const base = h * (0.56 + index * 0.075);
+      const amp = h * (0.05 + index * 0.012);
+      const phase = rand() * 10;
+      c.fillStyle = color;
+      c.beginPath();
+      c.moveTo(0, h);
+      for (let x = 0; x <= w; x += Math.max(1, w / 400)) {
+        const t = x / w;
+        const y = base
+          - Math.sin(t * 5.1 + phase) * amp
+          - Math.sin(t * 13.7 + phase * 2.3) * amp * 0.42
+          - Math.sin(t * 41 + phase * 5.1) * amp * 0.1;
+        c.lineTo(x, y);
+      }
+      c.lineTo(w, h);
+      c.closePath();
+      c.fill();
+    });
+
+    if (grain) {
+      const pixels = c.getImageData(0, 0, w, h);
+      const data = pixels.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const n = (rand() - 0.5) * 22;
+        data[i] += n; data[i + 1] += n; data[i + 2] += n;
+      }
+      c.putImageData(pixels, 0, 0);
+    }
+  }
+
+  function canvasBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('canvas'))), type, quality);
+    });
+  }
+
+  async function makeSample() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1800;
+    canvas.height = 1200;
+    drawSample(canvas, true);
+    return new File([await canvasBlob(canvas, 'image/jpeg', 0.97)], '示例图片.jpg', { type: 'image/jpeg' });
+  }
+
+  async function makeSampleWatermark() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 64;
+    const c = canvas.getContext('2d');
+    c.fillStyle = 'rgba(255,255,255,0.84)';
+    c.beginPath();
+    c.roundRect(0, 0, 300, 64, 18);
+    c.fill();
+    c.fillStyle = '#12141a';
+    c.font = '700 28px "Mona Sans", sans-serif';
+    c.textBaseline = 'middle';
+    c.fillText('image-optim', 24, 34);
+    return new File([await canvasBlob(canvas, 'image/png')], '示例水印.png', { type: 'image/png' });
+  }
+
+  // ── upload ────────────────────────────────────────────────
+
+  function uploadMessage(status, message) {
+    if (status === 413) return `图片超过 ${formatLimit(CONFIG.maxUploadBytes)}，换一张小一点的。`;
+    if (status === 415) return '只支持 JPEG、PNG、WebP、AVIF、GIF 和 JPEG XL 图片。';
+    if (status === 507) return '试用空间暂时满了，过几分钟再来。';
+    if (status === 429) return '服务器正忙，稍后再试。';
+    if (status === 0) return '连不上服务器，检查网络后重试。';
+    return `上传失败（${status}）${message ? '：' + message : ''}`;
+  }
+
+  function upload(blob, onProgress) {
+    return new Promise((resolve, reject) => {
+      const body = new FormData();
+      body.append('file', blob, 'upload');
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${BASE}/playground/upload`);
+      xhr.responseType = 'json';
+      xhr.upload.onprogress = (event) => {
+        if (onProgress && event.lengthComputable) onProgress(event.loaded / event.total);
+      };
+      xhr.onload = () => {
+        const data = xhr.response || {};
+        if (xhr.status === 200 && data.file) resolve(data);
+        else reject(new Error(uploadMessage(xhr.status, data.message)));
+      };
+      xhr.onerror = () => reject(new Error(uploadMessage(0)));
+      xhr.send(body);
+    });
+  }
+
+  function measure(url) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight, viewable: true });
+      img.onerror = () => resolve({ width: 0, height: 0, viewable: false });
+      img.src = url;
+    });
+  }
+
+  const inBench = () => document.body.dataset.state === 'bench';
+
+  // where upload progress and failures show up: the drop zone, or the viewer when replacing
+  function uploadUi() {
+    if (inBench()) {
+      return {
+        start() { $('busy').hidden = false; $('runError').hidden = true; $('stageHint').textContent = '正在上传 0%'; },
+        progress(percent) { $('stageHint').textContent = percent < 100 ? `正在上传 ${percent}%` : '上传完成，正在准备'; },
+        fail(message) { $('busy').hidden = true; $('stageHint').textContent = ''; $('runError').textContent = message; $('runError').hidden = false; },
+        done() { $('busy').hidden = true; },
+      };
+    }
+    return {
+      start() {
+        $('dropError').hidden = true;
+        $('progress').hidden = false;
+        $('progressFill').style.width = '0';
+        $('progressText').textContent = '正在上传 0%';
+      },
+      progress(percent) {
+        $('progressFill').style.width = `${percent}%`;
+        $('progressText').textContent = percent < 100 ? `正在上传 ${percent}%` : '上传完成，正在准备';
+      },
+      fail(message) { $('progress').hidden = true; $('dropError').textContent = message; $('dropError').hidden = false; },
+      done() { $('progress').hidden = true; },
+    };
+  }
+
+  async function acceptFile(file) {
+    if (!file) return;
+    const ui = uploadUi();
+    if (file.size > CONFIG.maxUploadBytes) {
+      ui.fail(uploadMessage(413));
+      return;
+    }
+    ui.start();
+    try {
+      const uploaded = await upload(file, (ratio) => ui.progress(Math.round(ratio * 100)));
+      const url = URL.createObjectURL(file);
+      const measured = await measure(url);
+      if (state.image) URL.revokeObjectURL(state.image.url);
+      state.image = {
+        blob: file,
+        name: file.name || '图片',
+        file: uploaded.file,
+        ext: uploaded.ext,
+        size: uploaded.size,
+        url,
+        ...measured,
+      };
+      ui.done();
+      openBench();
+    } catch (err) {
+      ui.fail(err.message);
+    }
+  }
+
+  // ── states ────────────────────────────────────────────────
+
+  function openBench() {
+    const image = state.image;
+    transition(() => {
+      document.body.dataset.state = 'bench';
+      $('hero').hidden = true;
+      $('bench').hidden = false;
+    });
+
+    $('fileName').textContent = image.name;
+    $('fileDims').textContent = image.viewable ? `${image.width} × ${image.height}` : '';
+    $('fileSize').textContent = `${labelOf(image.ext)} ${formatBytes(image.size)}`;
+    $('expiry').textContent = `这张图片 ${formatDuration(CONFIG.ttlSeconds)}后从服务器删除`;
+    $('imgBefore').src = image.viewable ? image.url : '';
+    $('readFrom').textContent = formatBytes(image.size);
+    userPickedView = false;
+    shownKey = '';
+
+    resetControls();
+    state.format = FORMATS.some((item) => item.id === image.ext) ? image.ext : 'webp';
+    buildTiles();
+    refresh({ all: true });
+    window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+  }
+
+  // ── controls ──────────────────────────────────────────────
+
+  function currentOp() {
+    return field('op').value;
+  }
+
+  function resetControls() {
+    const { width, height, viewable } = state.image;
+    form.reset();
+    state.qualityTouched = false;
+    if (state.watermark) URL.revokeObjectURL(state.watermark.url);
+    state.watermark = null;
+    $('wmThumb').hidden = true;
+    $('wmPick').textContent = '选择水印图片';
+    $('more').open = false;
+    if (viewable) {
+      field('resize_w').value = Math.max(1, Math.round(width / 2));
+      field('fit_w').value = Math.min(width, 800);
+      field('fit_h').value = Math.min(height, 800);
+      field('crop_w').value = Math.max(1, Math.round(width / 2));
+      field('crop_h').value = Math.max(1, Math.round(height / 2));
+      field('crop_x').value = Math.round(width / 4);
+      field('crop_y').value = Math.round(height / 4);
+      const side = Math.max(width, height);
+      field('pad_w').value = side;
+      field('pad_h').value = side;
+    }
+    syncControls();
+  }
+
+  function syncControls() {
+    const op = currentOp();
+    $('opLead').textContent = OP_LEAD[op];
+    form.querySelectorAll('[data-op]').forEach((group) => {
+      group.hidden = group.dataset.op !== op;
+    });
+    $('qualityOut').textContent = state.qualityTouched ? field('quality').value : '服务默认';
+    $('qualityReset').hidden = !state.qualityTouched;
+    form.querySelectorAll('output[data-for]').forEach((out) => {
+      const input = field(out.dataset.for);
+      const value = Number(input.value);
+      out.textContent = value > 0 && Number(input.min) < 0 ? `+${value}` : `${value}`;
+    });
+    form.querySelectorAll('input[type="range"]').forEach(paintRange);
+  }
+
+  const intOf = (name) => {
+    const value = parseInt(field(name).value, 10);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+
+  // Returns { path, params } or { problem } when the inputs can't make a call yet.
+  function opParams() {
+    const op = currentOp();
+    const params = [];
+    const { width, height, viewable } = state.image;
+    if (op === 'resize' || op === 'fit') {
+      const w = intOf(`${op}_w`);
+      const h = intOf(`${op}_h`);
+      if (!w && !h) return { problem: '填一个宽度或高度，就能看到结果。' };
+      if (w) params.push(['width', w]);
+      if (h) params.push(['height', h]);
+    } else if (op === 'crop') {
+      const x = intOf('crop_x');
+      const y = intOf('crop_y');
+      const w = intOf('crop_w');
+      const h = intOf('crop_h');
+      if (!w || !h) return { problem: '填上要裁出的宽和高。' };
+      if (viewable && (x + w > width || y + h > height)) {
+        return { problem: `裁剪范围超出了图片（${width} × ${height}），把起点或宽高调小一些。` };
+      }
+      params.push(['x', x], ['y', y], ['width', w], ['height', h]);
+    } else if (op === 'padding') {
+      const w = intOf('pad_w');
+      const h = intOf('pad_h');
+      if (!w || !h) return { problem: '填上画布的宽和高。' };
+      params.push(['width', w], ['height', h]);
+      if (!field('pad_clear').checked) params.push(['color', field('pad_color').value]);
+    } else if (op === 'watermark') {
+      if (!state.watermark) return { problem: '先选一张水印图片，或者用示例水印。' };
+      const position = field('wm_pos').value;
+      const inset = intOf('wm_inset');
+      const dx = /^left/.test(position) ? inset : /^right/.test(position) ? -inset : 0;
+      const dy = /top$/i.test(position) ? inset : /bottom$/i.test(position) ? -inset : 0;
+      params.push(['watermark', state.watermark.file], ['position', position]);
+      if (dx) params.push(['margin_left', dx]);
+      if (dy) params.push(['margin_top', dy]);
+    }
+    return { path: op, params };
+  }
+
+  function adjustParams() {
+    const params = [];
+    if (field('rotate').value) params.push(['rotate', field('rotate').value]);
+    if (field('flip').value) params.push(['flip', field('flip').value]);
+    if (field('gray').checked) params.push(['gray', 'true']);
+    ['blur', 'sharpen', 'brighten', 'contrast'].forEach((name) => {
+      if (Number(field(name).value) !== 0) params.push([name, field(name).value]);
+    });
+    if (field('strip').checked) params.push(['strip', 'true']);
+    return params;
+  }
+
+  function buildCall(format) {
+    const op = opParams();
+    if (op.problem) return op;
+    const query = new URLSearchParams();
+    query.set('file', state.image.file);
+    query.set('source', CONFIG.source);
+    if (format !== state.image.ext) query.set('output_type', format);
+    if (state.qualityTouched) query.set('quality', field('quality').value);
+    op.params.concat(adjustParams()).forEach(([key, value]) => query.set(key, value));
+    return { url: `${BASE}/images/${op.path}?${query}` };
+  }
+
+  // ── running a call ────────────────────────────────────────
+
+  function runMessage(status, message) {
+    if (status === 408) return '处理超时了。换一张小一点的图片，或者选编码更快的 JPEG、WebP。';
+    if (status === 413) return '图片超出了服务允许处理的大小。';
+    if (status === 429) return '服务器正忙，稍后再试。';
+    if (status === 0) return '连不上服务器，检查网络后重试。';
+    if (status >= 400 && status < 500) return `参数有问题：${message || status}`;
+    return `处理失败（${status}）。换一组参数再试。`;
+  }
+
+  async function reupload() {
+    const fresh = await upload(state.image.blob);
+    state.image.file = fresh.file;
+    if (state.watermark) state.watermark.file = (await upload(state.watermark.blob)).file;
+  }
+
+  async function fetchResult(url, signal) {
+    const started = performance.now();
+    let res;
+    try {
+      res = await fetch(url, { signal });
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      throw new Error(runMessage(0));
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const error = new Error(runMessage(res.status, body.message));
+      error.status = res.status;
+      throw error;
+    }
+    const blob = await res.blob();
+    const seconds = (performance.now() - started) / 1000;
+    const objectUrl = URL.createObjectURL(blob);
+    const measured = await measure(objectUrl);
+    return {
+      blob,
+      url: objectUrl,
+      size: blob.size,
+      seconds,
+      ext: TYPE_EXT[(res.headers.get('content-type') || '').split(';')[0]] || 'jpeg',
+      diff: res.headers.get('x-dssim-diff'),
+      ...measured,
+    };
+  }
+
+  function compute(format, retried) {
+    const call = buildCall(format);
+    if (call.problem) return;
+    const previous = state.results.get(format);
+    if (previous && previous.key === call.url && previous.status !== 'error') return;
+
+    const generation = state.generation;
+    const entry = { key: call.url, status: 'loading' };
+    state.results.set(format, entry);
+    paint();
+
+    fetchResult(call.url, state.abort.signal).then((data) => {
+      entry.status = 'done';
+      entry.data = data;
+    }).catch(async (err) => {
+      if (err.name === 'AbortError') return;
+      // the upload outlived its ttl: put it back and try once more
+      if (err.status === 404 && !retried && generation === state.generation) {
+        try {
+          await reupload();
+          state.results.delete(format);
+          return compute(format, true);
+        } catch (uploadErr) {
+          err = uploadErr;
+        }
+      }
+      entry.status = 'error';
+      entry.error = err.message;
+    }).finally(() => {
+      if (generation === state.generation) paint();
+    });
+  }
+
+  // Start over with the current inputs: the selected format always, the rest on request.
+  function refresh({ all } = {}) {
+    state.generation += 1;
+    if (state.abort) state.abort.abort();
+    state.abort = new AbortController();
+    state.results.forEach((entry) => {
+      if (entry.data) URL.revokeObjectURL(entry.data.url);
+    });
+    state.results.clear();
+    compute(state.format);
+    if (all) FORMATS.forEach((format) => compute(format.id));
+    paint();
+  }
+
+  let refreshTimer = 0;
+  function refreshSoon() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => refresh(), 320);
+  }
+
+  // ── painting ──────────────────────────────────────────────
+
+  function buildTiles() {
+    const tiles = $('tiles');
+    tiles.textContent = '';
+    FORMATS.forEach((format) => {
+      const tile = document.createElement('label');
+      tile.className = 'tile';
+      tile.dataset.format = format.id;
+      tile.innerHTML = '<input type="radio" name="format">'
+        + '<span class="name"><span></span><em class="chip good" hidden>最小</em></span>'
+        + '<span class="size"></span>'
+        + '<span class="meter"><i></i></span>'
+        + '<span class="foot"><span class="delta"></span><span class="time"></span></span>';
+      const input = tile.querySelector('input');
+      input.value = format.id;
+      input.checked = format.id === state.format;
+      input.addEventListener('change', () => {
+        state.format = format.id;
+        compute(format.id);
+        paint();
+      });
+      tile.querySelector('.name span').textContent = format.label;
+      tiles.append(tile);
+    });
+  }
+
+  function paintTiles() {
+    const original = state.image.size;
+    const done = [...state.results.values()].filter((entry) => entry.status === 'done');
+    const smallest = done.length > 1 ? Math.min(...done.map((entry) => entry.data.size)) : -1;
+
+    $('tiles').querySelectorAll('.tile').forEach((tile) => {
+      const entry = state.results.get(tile.dataset.format);
+      const status = entry ? entry.status : 'idle';
+      const size = tile.querySelector('.size');
+      const delta = tile.querySelector('.delta');
+      const time = tile.querySelector('.time');
+      const bar = tile.querySelector('.meter i');
+      const best = tile.querySelector('.chip');
+      tile.classList.toggle('is-idle', status === 'idle');
+      tile.classList.toggle('is-loading', status === 'loading');
+      tile.classList.toggle('is-error', status === 'error');
+      tile.classList.remove('is-bigger');
+      size.style.fontStretch = '';
+      time.textContent = '';
+      best.hidden = true;
+      if (status === 'idle') {
+        size.textContent = '—';
+        delta.textContent = '点一下试试';
+        bar.style.width = '0';
+      } else if (status === 'loading') {
+        size.textContent = ' ';
+        delta.textContent = '处理中';
+      } else if (status === 'error') {
+        size.textContent = '没成功';
+        delta.textContent = '';
+        bar.style.width = '0';
+      } else {
+        const data = entry.data;
+        size.textContent = formatBytes(data.size);
+        size.style.fontStretch = stretchFor(data.size, original);
+        delta.textContent = describeDelta(data.size, original);
+        time.textContent = `${data.seconds.toFixed(data.seconds < 10 ? 1 : 0)} 秒`;
+        bar.style.width = `${Math.min(Math.max((data.size / original) * 100, 1.5), 100)}%`;
+        tile.classList.toggle('is-bigger', data.size > original);
+        best.hidden = data.size !== smallest;
+      }
+    });
+  }
+
+  let shownKey = '';
+  let numberTimer = 0;
+  let userPickedView = false;
+
+  function animateSize(from, to) {
+    const target = $('readTo');
+    cancelAnimationFrame(numberTimer);
+    target.style.fontStretch = stretchFor(to, state.image.size);
+    if (reducedMotion.matches) {
+      target.textContent = formatBytes(to);
+      return;
+    }
+    const started = performance.now();
+    const step = (now) => {
+      const t = Math.min((now - started) / 520, 1);
+      const eased = 1 - (1 - t) ** 3;
+      target.textContent = formatBytes(Math.round(from + (to - from) * eased));
+      if (t < 1) numberTimer = requestAnimationFrame(step);
+    };
+    numberTimer = requestAnimationFrame(step);
+  }
+
+  function setView(view) {
+    $('frame').dataset.view = view;
+    document.querySelectorAll('input[name="view"]').forEach((input) => {
+      input.checked = input.value === view;
+    });
+  }
+
+  function paintStage(entry, call) {
+    const image = state.image;
+    const frame = $('frame');
+    const note = $('stageNote');
+    const loading = !!entry && entry.status === 'loading';
+    $('busy').hidden = !loading;
+    frame.classList.toggle('is-stale', loading || !!call.problem);
+    $('runError').hidden = true;
+    $('stageHint').textContent = '';
+    note.hidden = true;
+
+    if (call.problem) {
+      $('stageHint').textContent = call.problem;
+      return;
+    }
+    if (!entry || loading) {
+      $('stageHint').textContent = '正在处理';
+      return;
+    }
+    if (entry.status === 'error') {
+      $('runError').textContent = entry.error;
+      $('runError').hidden = false;
+      return;
+    }
+
+    const data = entry.data;
+    $('imgAfter').src = data.viewable ? data.url : '';
+    $('afterTag').textContent = `结果 ${labelOf(data.ext)}`;
+    const comparable = data.viewable && image.viewable
+      && data.width === image.width && data.height === image.height;
+    document.querySelector('input[name="view"][value="compare"]').disabled = !comparable;
+    document.querySelector('input[name="view"][value="before"]').disabled = !image.viewable;
+
+    let view = frame.dataset.view;
+    if (view === 'compare' && !comparable) view = 'after';
+    if (view === 'before' && !image.viewable) view = 'after';
+    if (shownKey !== entry.key && comparable && !userPickedView) view = 'compare';
+    setView(view);
+
+    const missing = (view === 'after' && !data.viewable) || (view === 'before' && !image.viewable);
+    frame.hidden = missing;
+    if (missing) {
+      note.hidden = false;
+      note.textContent = view === 'after'
+        ? `这个浏览器显示不了 ${labelOf(data.ext)}，不过结果已经生成，可以直接下载。`
+        : '这个浏览器显示不了这张原图。';
+    }
+    if (view === 'compare') $('stageHint').textContent = '拖动分割线：左边是原图，右边是结果';
+    else if (!comparable && data.viewable && image.viewable) $('stageHint').textContent = '尺寸变了，没法左右对比，可以在“结果”和“原图”之间切换';
+  }
+
+  function paintReadout(entry, call) {
+    const image = state.image;
+    const meta = $('meta');
+    const delta = $('readDelta');
+    meta.textContent = '';
+    delta.className = 'chip';
+    if (!entry || entry.status !== 'done') {
+      $('readTo').textContent = call.problem || (entry && entry.status === 'error') ? '—' : '…';
+      $('readTo').style.fontStretch = '';
+      delta.textContent = '';
+      shownKey = '';
+      return;
+    }
+    const data = entry.data;
+    if (shownKey !== entry.key) {
+      animateSize(image.size, data.size);
+      $('live').textContent = `处理完成，${labelOf(data.ext)} ${formatBytes(data.size)}，比原图${describeDelta(data.size, image.size)}`;
+    }
+    delta.textContent = describeDelta(data.size, image.size);
+    const tone = deltaTone(data.size, image.size);
+    if (tone) delta.classList.add(tone);
+    const items = [['格式', labelOf(data.ext)]];
+    if (data.viewable) items.push(['尺寸', `${data.width} × ${data.height}`]);
+    items.push(['用时', `${data.seconds.toFixed(2)} 秒`]);
+    if (data.diff) items.push(['和原图的差异', `${data.diff}（越小越接近）`]);
+    items.forEach(([term, value]) => {
+      const wrap = document.createElement('div');
+      const dt = document.createElement('dt');
+      const dd = document.createElement('dd');
+      dt.textContent = term;
+      dd.textContent = value;
+      wrap.append(dt, dd);
+      meta.append(wrap);
+    });
+    shownKey = entry.key;
+  }
+
+  function paintCall(entry, call) {
+    const ready = !!entry && entry.status === 'done';
+    const absolute = call.url ? new URL(call.url, location.origin).href : '';
+    $('callUrl').textContent = absolute || '参数填好后，这里会显示调用地址';
+    $('callMethod').hidden = !absolute;
+    $('copyUrl').disabled = !absolute;
+    $('copyCurl').disabled = !absolute;
+    const download = $('download');
+    download.setAttribute('aria-disabled', String(!ready));
+    if (ready) {
+      const base = state.image.name.replace(/\.[^.]+$/, '') || 'image';
+      download.href = entry.data.url;
+      download.download = `${base}-optim.${entry.data.ext === 'jpeg' ? 'jpg' : entry.data.ext}`;
+    } else {
+      download.removeAttribute('href');
+    }
+  }
+
+  function paint() {
+    if (!state.image || !inBench()) return;
+    const call = buildCall(state.format);
+    const entry = call.problem ? null : state.results.get(state.format);
+    paintTiles();
+    // paintReadout decides whether the result is new, so it runs after the stage
+    paintStage(entry, call);
+    paintReadout(entry, call);
+    paintCall(entry, call);
+    const pending = FORMATS.some((format) => !state.results.has(format.id));
+    $('compareAll').disabled = !!call.problem || !pending;
+  }
+
+  // ── compare divider ───────────────────────────────────────
+
+  function setCut(percent) {
+    state.cut = Math.min(Math.max(percent, 0), 100);
+    $('frame').style.setProperty('--cut', `${state.cut}%`);
+    $('cut').setAttribute('aria-valuenow', String(Math.round(state.cut)));
+  }
+
+  function cutFromEvent(event) {
+    const rect = $('frame').getBoundingClientRect();
+    setCut(((event.clientX - rect.left) / rect.width) * 100);
+  }
+
+  $('frame').addEventListener('pointerdown', (event) => {
+    const frame = $('frame');
+    if (frame.dataset.view !== 'compare') return;
+    const onHandle = $('cut').contains(event.target);
+    // at 100% the stage scrolls, so only the handle moves the divider there
+    if (!onHandle && $('stage').classList.contains('is-actual')) return;
+    frame.setPointerCapture(event.pointerId);
+    cutFromEvent(event);
+    const move = (e) => cutFromEvent(e);
+    const stop = () => {
+      frame.removeEventListener('pointermove', move);
+      frame.removeEventListener('pointerup', stop);
+      frame.removeEventListener('pointercancel', stop);
+    };
+    frame.addEventListener('pointermove', move);
+    frame.addEventListener('pointerup', stop);
+    frame.addEventListener('pointercancel', stop);
+  });
+
+  $('cut').addEventListener('keydown', (event) => {
+    const steps = { ArrowLeft: -2, ArrowRight: 2, PageDown: -10, PageUp: 10 };
+    if (event.key in steps) setCut(state.cut + steps[event.key]);
+    else if (event.key === 'Home') setCut(0);
+    else if (event.key === 'End') setCut(100);
+    else return;
+    event.preventDefault();
+  });
+
+  // ── events ────────────────────────────────────────────────
+
+  document.querySelectorAll('input[name="view"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      userPickedView = true;
+      $('frame').dataset.view = input.value;
+      paint();
+    });
+  });
+
+  document.querySelectorAll('input[name="zoom"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      $('stage').classList.toggle('is-actual', input.value === 'actual');
+    });
+  });
+
+  // the page takes its light from the picture being worked on
+  $('imgBefore').addEventListener('load', () => setAmbient($('imgBefore')));
+  $('imgAfter').addEventListener('load', () => {
+    if (state.image && !state.image.viewable) setAmbient($('imgAfter'));
+  });
+
+  form.addEventListener('submit', (event) => event.preventDefault());
+
+  form.addEventListener('input', (event) => {
+    if (event.target.name === 'quality') state.qualityTouched = true;
+    syncControls();
+    refreshSoon();
+  });
+
+  $('qualityReset').addEventListener('click', () => {
+    state.qualityTouched = false;
+    field('quality').value = 80;
+    syncControls();
+    refresh();
+  });
+
+  $('resetAll').addEventListener('click', () => {
+    ['rotate', 'flip'].forEach((name) => { field(name).value = ''; });
+    ['blur', 'sharpen', 'brighten', 'contrast'].forEach((name) => { field(name).value = 0; });
+    field('gray').checked = false;
+    field('strip').checked = false;
+    syncControls();
+    refresh();
+  });
+
+  $('compareAll').addEventListener('click', () => {
+    FORMATS.forEach((format) => compute(format.id));
+    paint();
+  });
+
+  async function copy(button, text) {
+    const label = button.querySelector('span');
+    const before = label.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      label.textContent = '已复制';
+    } catch (err) {
+      label.textContent = '复制失败，请手动选中';
+    }
+    setTimeout(() => { label.textContent = before; }, 1600);
+  }
+
+  function absoluteCall() {
+    const call = buildCall(state.format);
+    return call.url ? new URL(call.url, location.origin).href : '';
+  }
+
+  $('copyUrl').addEventListener('click', () => copy($('copyUrl'), absoluteCall()));
+
+  $('copyCurl').addEventListener('click', () => {
+    const entry = state.results.get(state.format);
+    const ext = entry && entry.data ? entry.data.ext : state.format;
+    copy($('copyCurl'), `curl -o result.${ext === 'jpeg' ? 'jpg' : ext} "${absoluteCall()}"`);
+  });
+
+  $('pick').addEventListener('click', () => $('fileInput').click());
+  $('replace').addEventListener('click', () => $('fileInput').click());
+
+  $('fileInput').addEventListener('change', (event) => {
+    acceptFile(event.target.files[0]);
+    event.target.value = '';
+  });
+
+  $('sample').addEventListener('click', async () => {
+    $('sample').disabled = true;
+    try {
+      await acceptFile(await makeSample());
+    } catch (err) {
+      $('dropError').textContent = '示例图片生成失败，换一张自己的图片试试。';
+      $('dropError').hidden = false;
+    } finally {
+      $('sample').disabled = false;
+    }
+  });
+
+  async function acceptWatermark(file) {
+    if (!file) return;
+    const button = $('wmPick');
+    button.disabled = true;
+    button.textContent = '正在上传';
+    try {
+      const uploaded = await upload(file);
+      if (state.watermark) URL.revokeObjectURL(state.watermark.url);
+      state.watermark = { blob: file, file: uploaded.file, url: URL.createObjectURL(file) };
+      $('wmThumb').src = state.watermark.url;
+      $('wmThumb').hidden = false;
+      $('runError').hidden = true;
+      button.textContent = '换一张水印';
+      refresh();
+    } catch (err) {
+      $('runError').textContent = err.message;
+      $('runError').hidden = false;
+      button.textContent = state.watermark ? '换一张水印' : '选择水印图片';
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  $('wmPick').addEventListener('click', () => $('wmInput').click());
+  $('wmInput').addEventListener('change', (event) => {
+    acceptWatermark(event.target.files[0]);
+    event.target.value = '';
+  });
+  $('wmSample').addEventListener('click', async () => acceptWatermark(await makeSampleWatermark()));
+
+  // drop anywhere on the page
+  let dragDepth = 0;
+  const hasFiles = (event) => [...(event.dataTransfer ? event.dataTransfer.types : [])].includes('Files');
+
+  const endDrag = () => {
+    dragDepth = 0;
+    $('veil').hidden = true;
+    $('drop').classList.remove('is-over');
+    $('dropTitle').textContent = '把图片拖到这里';
+  };
+
+  window.addEventListener('dragenter', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+    if (inBench()) {
+      $('veil').hidden = false;
+    } else {
+      $('drop').classList.add('is-over');
+      $('dropTitle').textContent = '松手就上传';
+    }
+  });
+
+  window.addEventListener('dragover', (event) => {
+    if (hasFiles(event)) event.preventDefault();
+  });
+
+  window.addEventListener('dragleave', () => {
+    dragDepth -= 1;
+    if (dragDepth <= 0) endDrag();
+  });
+
+  window.addEventListener('drop', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    endDrag();
+    acceptFile(event.dataTransfer.files[0]);
+  });
+
+  window.addEventListener('paste', (event) => {
+    const file = event.clipboardData && event.clipboardData.files[0];
+    if (file) acceptFile(file);
+  });
+
+  // ── start ─────────────────────────────────────────────────
+
+  $('limits').textContent = `支持 JPEG、PNG、WebP、AVIF、GIF、JPEG XL，单张不超过 ${formatLimit(CONFIG.maxUploadBytes)}。上传的图片 ${formatDuration(CONFIG.ttlSeconds)}后自动删除。`;
+  drawSample($('poster'), false);
+  $('poster').classList.add('is-ready');
+  drawSample($('sampleThumb'), false);
+  setAmbient($('poster'));
+  form.querySelectorAll('input[type="range"]').forEach(paintRange);
+})();
+</script>
+</body>
+</html>

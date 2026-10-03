@@ -38,6 +38,26 @@ docker run -d \
   vicanso/image-optim
 ```
 
+## 试用页面（Playground）
+
+服务自带一个网页，启动后打开 `http://127.0.0.1:3000/`（会跳转到 `/playground`）：上传一张图片，就可以在浏览器里试压缩、转格式、缩放、裁剪、画布、水印以及旋转、模糊等调整。页面会展示处理前后的对比、各输出格式的体积，以及这次操作对应的接口地址。
+
+- 页面上的每一步都是对 `/images/*` 接口的真实调用：上传的图片通过保留的命名存储 `source=playground` 提供给这些接口
+- 上传接口为 `POST /playground/upload`（`multipart/form-data`，字段名 `file`），返回 `{"file": "pg-<uuid>.<ext>", "source": "playground", "ext": "...", "size": ..., "expires_in": ...}`
+- 图片保存在服务器的临时目录（默认 `<系统临时目录>/image-optim-playground`）。文件名由服务端生成，格式按文件头识别，只接受 JPEG / PNG / GIF / WebP / AVIF / JPEG XL
+- 定时任务会删除超过 `ttl` 的上传文件；清理和容量统计只处理 `pg-` 开头的文件，目录里的其它文件不受影响
+- `playground` 源不受路径白名单（`guard`）限制；这个源名是保留的，启用时会覆盖同名的 `IMOP__OPENDAL__PLAYGROUND__URL`
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `IMOP__PLAYGROUND__ENABLED` | `true` | 是否启用试用页面和上传接口 |
+| `IMOP__PLAYGROUND__DIR` | 空 | 上传目录，空表示 `<系统临时目录>/image-optim-playground` |
+| `IMOP__PLAYGROUND__MAX_UPLOAD_BYTES` | `10485760` | 单个文件的大小上限（字节） |
+| `IMOP__PLAYGROUND__MAX_TOTAL_BYTES` | `536870912` | 已上传文件的总容量上限，超过后拒绝新的上传（返回 507） |
+| `IMOP__PLAYGROUND__TTL` | `1h` | 上传文件的保留时长，到期后由定时任务删除 |
+
+> 上传接口没有鉴权。服务只作为内部图片处理接口使用、不需要这个页面时，设置 `IMOP__PLAYGROUND__ENABLED=false` 即可关闭页面和上传接口。
+
 ## API 接口说明
 
 基于存储的图片处理服务提供了以下 REST API 接口，所有接口通过 GET 请求并使用 Query 参数传递。

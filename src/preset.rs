@@ -17,7 +17,7 @@ use once_cell::sync::OnceCell;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tibba_error::Error;
-use tibba_hook::{BoxFuture, Task, register_task};
+use tibba_runtime::{BoxFuture, Task, register_task};
 use tracing::{info, warn};
 
 type Result<T> = std::result::Result<T, Error>;
