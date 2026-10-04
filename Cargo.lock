@@ -2212,7 +2212,7 @@ dependencies = [
 
 [[package]]
 name = "image-optim"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
  "axum",
  "axum-extra",
