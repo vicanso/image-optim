@@ -51,6 +51,8 @@
   --good-soft: rgba(69, 214, 160, 0.14);
   --bad: #ff8a7d;
   --bad-soft: rgba(255, 138, 125, 0.14);
+  --warn: #f3b860;
+  --warn-soft: rgba(243, 184, 96, 0.15);
   --inverse: #f2f3f5;
   --on-inverse: #121317;
   --check-a: #1c1e23;
@@ -84,6 +86,8 @@
   --good-soft: rgba(11, 149, 103, 0.11);
   --bad: #d2412f;
   --bad-soft: rgba(210, 65, 47, 0.1);
+  --warn: #a35f00;
+  --warn-soft: rgba(163, 95, 0, 0.11);
   --inverse: #12141a;
   --on-inverse: #ffffff;
   --check-a: #eceef2;
@@ -549,7 +553,7 @@ h1, h2, p { margin: 0; }
   line-height: 0;
   user-select: none;
   -webkit-user-select: none;
-  transition: opacity 0.2s;
+  transition: filter 0.2s;
 }
 
 .stage.is-actual .frame { display: inline-block; max-width: none; max-height: none; }
@@ -578,7 +582,7 @@ h1, h2, p { margin: 0; }
 .frame:not([data-view="compare"]) .cut,
 .frame:not([data-view="compare"]) .tag { display: none; }
 
-.frame.is-stale { opacity: 0.4; }
+.frame.is-stale { filter: brightness(0.6) saturate(0.8); }
 
 .cut {
   position: absolute;
@@ -632,27 +636,48 @@ h1, h2, p { margin: 0; }
 
 .tag.after { right: 10px; }
 
-.busy {
+/* until the first result of an image arrives there is nothing to compare: show the original alone */
+.frame.is-waiting #imgAfter,
+.frame.is-waiting .cut,
+.frame.is-waiting .tag { display: none; }
+
+.frame.is-waiting #imgBefore { display: block; }
+
+.working {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 3;
-  height: 2px;
-  overflow: hidden;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 10px 14px;
+  border-radius: 999px;
+  background: rgba(10, 12, 16, 0.74);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-.busy::after {
+.working::before {
   content: "";
-  position: absolute;
-  inset: 0 55% 0 0;
-  border-radius: 2px;
-  background: var(--accent);
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  border-radius: 50%;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .busy::after { animation: sweep 1s ease-in-out infinite alternate; }
-  @keyframes sweep { to { inset: 0 0 0 55%; } }
+  .working::before { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 }
 
 .stage-note { max-width: 26em; padding: 24px; color: var(--text-2); font-size: 15px; line-height: 1.7; text-align: center; }
@@ -704,9 +729,13 @@ h1, h2, p { margin: 0; }
 
 .chip.bad { background: var(--bad-soft); color: var(--bad); }
 
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+
 .meta { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; color: var(--text-3); font-size: 13px; }
 
-.meta div { display: flex; gap: 6px; }
+.meta div { display: flex; align-items: center; gap: 6px; }
+
+.meta .chip { height: 20px; padding: 0 8px; font-size: 11.5px; }
 
 .meta dt, .meta dd { margin: 0; }
 
@@ -784,14 +813,16 @@ h1, h2, p { margin: 0; }
 
 .tile.is-idle .size, .tile.is-error .size { color: var(--text-3); }
 
-.tile.is-loading .size {
+.tile.is-loading .size, .readout .to.is-loading {
   width: 68%;
   border-radius: 8px;
   background: linear-gradient(90deg, var(--field) 25%, var(--field-strong) 50%, var(--field) 75%) 0 0 / 200% 100%;
 }
 
+.readout .to.is-loading { display: inline-block; width: 3.6em; height: 1em; }
+
 @media (prefers-reduced-motion: no-preference) {
-  .tile.is-loading .size { animation: shimmer 1.2s linear infinite; }
+  .tile.is-loading .size, .readout .to.is-loading { animation: shimmer 1.2s linear infinite; }
   @keyframes shimmer { to { background-position: -200% 0; } }
 }
 
@@ -1165,7 +1196,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
           </div>
         </div>
         <div class="stage" id="stage">
-          <div class="busy" id="busy" hidden></div>
+          <div class="working" id="working" role="status" hidden></div>
           <div class="frame" id="frame" data-view="compare">
             <img id="imgBefore" alt="原图" draggable="false">
             <img id="imgAfter" alt="处理结果" draggable="false">
@@ -1370,6 +1401,16 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     abort: null,
     cut: 50,
   };
+
+  // X-Dssim-Diff is DSSIM x 1000. DSSIM has no standard cut-off, so these tiers are the
+  // project's own guidance for reading the value.
+  const DIFF_TIERS = [
+    { max: 1, tone: 'good', text: '不超过 1，绝对没问题' },
+    { max: 2, tone: 'good', text: '不超过 2，基本没问题' },
+    { max: 3, tone: '', text: '不超过 3，也可取' },
+  ];
+  const DIFF_BEYOND = { tone: 'warn', text: '高于 3，差别可能比较明显' };
+  const DIFF_NOTE = 'DSSIM × 1000，数值越小越接近原图。参考：不超过 1 绝对没问题，不超过 2 基本没问题，不超过 3 也可取。噪点或颗粒多的图片数值会偏高。';
 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -1598,16 +1639,29 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     });
   }
 
-  const inBench = () => document.body.dataset.state === 'bench';
+  // Kept in JS rather than read back from the DOM: a view transition applies the DOM
+  // change a frame later, and the first paint must not wait for it.
+  let mode = 'landing';
+  const inBench = () => mode === 'bench';
+
+  // the pill in the middle of the stage: uploading (when replacing) or processing
+  let uploadText = '';
+  function showWorking(text) {
+    $('working').textContent = text;
+    $('working').hidden = !text;
+  }
 
   // where upload progress and failures show up: the drop zone, or the viewer when replacing
   function uploadUi() {
     if (inBench()) {
       return {
-        start() { $('busy').hidden = false; $('runError').hidden = true; $('stageHint').textContent = '正在上传 0%'; },
-        progress(percent) { $('stageHint').textContent = percent < 100 ? `正在上传 ${percent}%` : '上传完成，正在准备'; },
-        fail(message) { $('busy').hidden = true; $('stageHint').textContent = ''; $('runError').textContent = message; $('runError').hidden = false; },
-        done() { $('busy').hidden = true; },
+        start() { uploadText = '正在上传 0%'; $('runError').hidden = true; showWorking(uploadText); },
+        progress(percent) {
+          uploadText = percent < 100 ? `正在上传 ${percent}%` : '上传完成，正在准备';
+          showWorking(uploadText);
+        },
+        fail(message) { uploadText = ''; showWorking(''); $('runError').textContent = message; $('runError').hidden = false; },
+        done() { uploadText = ''; },
       };
     }
     return {
@@ -1659,6 +1713,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
 
   function openBench() {
     const image = state.image;
+    mode = 'bench';
     transition(() => {
       document.body.dataset.state = 'bench';
       $('hero').hidden = true;
@@ -1670,8 +1725,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     $('fileSize').textContent = `${labelOf(image.ext)} ${formatBytes(image.size)}`;
     $('expiry').textContent = `这张图片 ${formatDuration(CONFIG.ttlSeconds)}后从服务器删除`;
     $('imgBefore').src = image.viewable ? image.url : '';
+    $('imgAfter').removeAttribute('src');
     $('readFrom').textContent = formatBytes(image.size);
     userPickedView = false;
+    resultShown = false;
     shownKey = '';
 
     resetControls();
@@ -1871,6 +1928,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
       }
       entry.status = 'error';
       entry.error = err.message;
+      entry.timedOut = err.status === 408;
     }).finally(() => {
       if (generation === state.generation) paint();
     });
@@ -1952,7 +2010,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
         delta.textContent = '处理中';
       } else if (status === 'error') {
         size.textContent = '没成功';
-        delta.textContent = '';
+        delta.textContent = entry.timedOut ? '处理超时' : '出错了';
         bar.style.width = '0';
       } else {
         const data = entry.data;
@@ -1970,6 +2028,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
   let shownKey = '';
   let numberTimer = 0;
   let userPickedView = false;
+  // whether the stage already holds a result of the current image
+  let resultShown = false;
+
+  const isLoading = (entry, call) => !call.problem && (!entry || entry.status === 'loading');
 
   function animateSize(from, to) {
     const target = $('readTo');
@@ -2000,9 +2062,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     const image = state.image;
     const frame = $('frame');
     const note = $('stageNote');
-    const loading = !!entry && entry.status === 'loading';
-    $('busy').hidden = !loading;
-    frame.classList.toggle('is-stale', loading || !!call.problem);
+    const loading = isLoading(entry, call);
+    showWorking(uploadText || (loading ? '正在处理' : ''));
+    frame.classList.toggle('is-waiting', !resultShown);
+    frame.classList.toggle('is-stale', resultShown && (loading || !!call.problem));
+    if (!resultShown) frame.hidden = !image.viewable;
     $('runError').hidden = true;
     $('stageHint').textContent = '';
     note.hidden = true;
@@ -2011,10 +2075,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
       $('stageHint').textContent = call.problem;
       return;
     }
-    if (!entry || loading) {
-      $('stageHint').textContent = '正在处理';
-      return;
-    }
+    if (loading) return;
     if (entry.status === 'error') {
       $('runError').textContent = entry.error;
       $('runError').hidden = false;
@@ -2023,6 +2084,8 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
 
     const data = entry.data;
     $('imgAfter').src = data.viewable ? data.url : '';
+    resultShown = true;
+    frame.classList.remove('is-waiting');
     $('afterTag').textContent = `结果 ${labelOf(data.ext)}`;
     const comparable = data.viewable && image.viewable
       && data.width === image.width && data.height === image.height;
@@ -2053,8 +2116,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     const delta = $('readDelta');
     meta.textContent = '';
     delta.className = 'chip';
+    const loading = isLoading(entry, call);
+    $('readTo').classList.toggle('is-loading', loading);
     if (!entry || entry.status !== 'done') {
-      $('readTo').textContent = call.problem || (entry && entry.status === 'error') ? '—' : '…';
+      cancelAnimationFrame(numberTimer);
+      $('readTo').textContent = loading ? '' : '—';
       $('readTo').style.fontStretch = '';
       delta.textContent = '';
       shownKey = '';
@@ -2071,14 +2137,24 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     const items = [['格式', labelOf(data.ext)]];
     if (data.viewable) items.push(['尺寸', `${data.width} × ${data.height}`]);
     items.push(['用时', `${data.seconds.toFixed(2)} 秒`]);
-    if (data.diff) items.push(['和原图的差异', `${data.diff}（越小越接近）`]);
-    items.forEach(([term, value]) => {
+    if (data.diff) {
+      const diff = Number(data.diff);
+      items.push(['和原图的差异', data.diff, DIFF_TIERS.find((tier) => diff <= tier.max) || DIFF_BEYOND]);
+    }
+    items.forEach(([term, value, verdict]) => {
       const wrap = document.createElement('div');
       const dt = document.createElement('dt');
       const dd = document.createElement('dd');
       dt.textContent = term;
       dd.textContent = value;
       wrap.append(dt, dd);
+      if (verdict) {
+        const chip = document.createElement('span');
+        chip.className = `chip ${verdict.tone}`;
+        chip.textContent = verdict.text;
+        wrap.append(chip);
+        wrap.title = DIFF_NOTE;
+      }
       meta.append(wrap);
     });
     shownKey = entry.key;
@@ -2111,7 +2187,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
     paintStage(entry, call);
     paintReadout(entry, call);
     paintCall(entry, call);
-    const pending = FORMATS.some((format) => !state.results.has(format.id));
+    // formats not tried yet, or that failed and can be tried again
+    const pending = FORMATS.some((format) => {
+      const result = state.results.get(format.id);
+      return !result || result.status === 'error';
+    });
     $('compareAll').disabled = !!call.problem || !pending;
   }
 

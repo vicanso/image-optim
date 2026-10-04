@@ -99,7 +99,7 @@ docker run -d \
 **返回头部**:
 - `Content-Type`: 对应的图片 MIME 类型
 - `Cache-Control`: `public, max-age=2592000` (30天缓存)
-- `X-Dssim-Diff`: 压缩后与原图的差异值（人眼感知差异）
+- `X-Dssim-Diff`: 压缩后与原图的差异值（人眼感知差异），取 [DSSIM](https://github.com/kornelski/dssim) × 1000，越小越接近原图。DSSIM 没有统一的行业阈值，本项目按以下标准判断：不超过 `1` 绝对没问题，不超过 `2` 基本没问题，不超过 `3` 也可取，高于 `3` 差别可能比较明显；噪点或颗粒多的图片数值会偏高
 - `X-Ratio`: 压缩率百分比
 
 **示例**:
